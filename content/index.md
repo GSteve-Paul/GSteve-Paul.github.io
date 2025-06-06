@@ -1,5 +1,5 @@
 ---
-title: Welcome to Quartz
+title: Steve Paul 的博客
 ---
 
 This is a blank Quartz installation.
