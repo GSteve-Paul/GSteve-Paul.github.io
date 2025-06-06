@@ -17,7 +17,7 @@ const config: QuartzConfig = {
     },
     locale: "zh-CN",
     baseUrl: "https://gsteve-paul.github.io/",
-    ignorePatterns: ["private", "templates", ".obsidian"],
+    ignorePatterns: ["private", "templates", ".obsidian", "data-"],
     defaultDateType: "modified",
     theme: {
       fontOrigin: "googleFonts",

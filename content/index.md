@@ -2,5 +2,6 @@
 title: Steve Paul 的博客
 ---
 
-This is a blank Quartz installation.
-See the [documentation](https://quartz.jzhao.xyz) for how to get started.
+你好！这是Steve Paul的博客网站。
+
+你可以单击左边的探索去看看我发过哪些博客，希望我的文字能给你带来快乐😆。
