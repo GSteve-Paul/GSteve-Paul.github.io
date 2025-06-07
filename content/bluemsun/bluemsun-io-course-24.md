@@ -2,7 +2,7 @@
 title: 蓝旭24 Java IO培训
 date: 2023-04-05
 ---
-
+本篇是[蓝旭23春季培训-第3周预习](bluemsun-spring-training-3rd-week)的一个Fork
 ## Java IO 简介
 
 Java IO是就是用Java 执行输入输出操作.它能够让用户们通过input和output来访问不同的数据源和目的地.其中input指的是从外部输入到程序的内部,而output指的是从程序的内部输出到外部.io分为java.io和java.nio,前者会造成线程的阻塞,而后者不会.
