@@ -9,14 +9,14 @@ export const sharedPageComponents: SharedLayout = {
         Component.Comments({
             provider: 'giscus',
             options: {
-            // from data-repo
-            repo: 'GSteve-Paul/GSteve-Paul.github.io',
-            // from data-repo-id
-            repoId: 'R_kgDOO3BL4A',
-            // from data-category
-            category: 'Announcements',
-            // from data-category-id
-            categoryId: 'DIC_kwDOO3BL4M4CrJWS',
+                // from data-repo
+                repo: 'GSteve-Paul/GSteve-Paul.github.io',
+                // from data-repo-id
+                repoId: 'R_kgDOO3BL4A',
+                // from data-category
+                category: 'Announcements',
+                // from data-category-id
+                categoryId: 'DIC_kwDOO3BL4M4CrJWS',
             }
         }),
     ],
