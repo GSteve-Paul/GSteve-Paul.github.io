@@ -1,6 +1,8 @@
 ---
 title: Harbour.Space Scholarship Contest 2021-2022 E题
 date: 2024-04-14
+tags:
+  - Codeforces
 ---
 原题链接：https://codeforces.com/problemset/problem/1553/E
 

@@ -1,6 +1,8 @@
 ---
 title: Codeforces Round 872(Div.2) D2题
 date: 2023-05-10
+tags:
+  - Codeforces
 ---
 先贴个题目链接 [D2-LuoTianyi and the Floating Islands](https://codeforces.com/contest/1825/problem/D2)
 

@@ -1,6 +1,7 @@
 ---
 title: 蓝旭24 Java IO培训
 date: 2023-04-05
+tags:
 ---
 本篇是[蓝旭23春季培训-第3周预习](bluemsun-spring-training-3rd-week)的一个Fork
 ## Java IO 简介

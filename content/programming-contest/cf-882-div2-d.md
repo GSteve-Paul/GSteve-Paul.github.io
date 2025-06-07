@@ -1,6 +1,8 @@
 ---
 title: Codeforces Round 882(Div.2) D题
 date: 2023-07-14
+tags:
+  - Codeforces
 ---
 先贴一个题目链接[D. Professor Higashikata](https://codeforces.com/contest/1847/problem/D)
 

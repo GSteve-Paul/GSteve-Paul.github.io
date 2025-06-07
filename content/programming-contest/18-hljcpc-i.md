@@ -1,6 +1,8 @@
 ---
 title: 第18届黑龙江省赛 I题
 date: 2023-05-19
+tags:
+  - 第18届黑龙江省赛
 ---
 先贴个题目链接[I-Club](https://codeforces.com/gym/104363/problem/I)
 

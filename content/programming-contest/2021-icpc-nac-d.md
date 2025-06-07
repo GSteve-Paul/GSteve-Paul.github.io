@@ -1,6 +1,8 @@
 ---
 title: 2021年ICPC NAC D题
 date: 2023-05-09
+tags:
+  - 2021年ICPC北美决赛
 ---
 先贴一个题目链接[D-Contest Construction](https://open.kattis.com/problems/contestconstruction)
 

@@ -1,6 +1,8 @@
 ---
 title: Edu Codeforces Round 150 D题
 date: 2023-06-24
+tags:
+  - Codeforces
 ---
 先贴一个题目链接[D. Pairs of Segments](https://www.codeforces.com/problemset/problem/1841/D)
 <hr>

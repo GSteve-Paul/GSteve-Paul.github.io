@@ -1,6 +1,8 @@
 ---
 title: 第15届吉林省赛 H题
 date: 2023-04-01
+tags:
+  - 第15届吉林省赛
 ---
 先贴个题目链接[H-Visit the Park](https://codeforces.com/gym/103486/problem/H)
 

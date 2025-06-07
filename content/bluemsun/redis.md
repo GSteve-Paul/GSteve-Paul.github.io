@@ -1,6 +1,8 @@
 ---
 title: Redis学习入门
 date: 2023-09-06
+tags:
+  - 蓝旭2023秋季学习
 ---
 # 概念
 > Redis是一个key-value存储系统（键值存储系统），支持丰富的数据类型，如：String、list、set、zset、hash。
