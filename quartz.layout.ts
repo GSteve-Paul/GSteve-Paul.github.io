@@ -12,11 +12,11 @@ export const sharedPageComponents: SharedLayout = {
                 // from data-repo
                 repo: 'GSteve-Paul/GSteve-Paul.github.io',
                 // from data-repo-id
-                repoId: 'R_kgDOO3BL4A',
+                repoId: 'R_kgDOO4FHsQ',
                 // from data-category
                 category: 'Announcements',
                 // from data-category-id
-                categoryId: 'DIC_kwDOO3BL4M4CrJWS',
+                categoryId: 'DIC_kwDOO4FHsc4CrMM1',
                 // from data-lang
                 lang: 'zh-CN',
             }
