@@ -43,8 +43,7 @@ date: 2025-06-07
 		else if (c > mid)
 			return query(a[lroot].rnode, a[rroot].rnode, c, d);
 		else
-			return query(a[lroot].lnode, a[rroot].lnode, c, mid) +
-			query(a[lroot].rnode, a[rroot].rnode, mid + 1, d);
+			return query(a[lroot].lnode, a[rroot].lnode, c, mid) + query(a[lroot].rnode, a[rroot].rnode, mid + 1, d);
 	}
 	```
 
