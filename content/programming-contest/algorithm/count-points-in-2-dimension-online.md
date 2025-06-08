@@ -22,10 +22,13 @@ date: 2025-06-07
 
 #### 数据预处理
 
+为了防止存不下，可以对$x_i$和$y_i$做离散化。
+
 1. 将$P_i(x_i,y_i)$ 按照$x_i$从小到大排序，相当于排好修改时间。
 2. 建好一颗可持久化线段树$Tree$，其内部的值域线段树值域为$y_i$的值域，而修改次数则是$x_i$的个数。
 3. 将第一步排好序的$P_i(x_i,y_i)$逐个修改$Tree$，修改方式是$node[y_i].val + 1$，在可持久化线段树的策略下，这会给整个线段树添加一条新链，这个新链则维护了本次修改的信息。然后我们记录下这次修改的$i$和所对应的$Tree$的根节点到一个$map$映射中。
 
+上述过程的时间复杂度为$O(n\log{n})$
 #### 查询
 
 1. 可以通过"二分"$map$找到$a$对应的$lroot = map[\max_{x_i < a}{i}]$ 与$b$对应的 $rroot = map[\max_{x_i \le b}{i}]$ ，这样从前缀和的角度，这两个根节点所代表的值域线段树的差$rroot-lroot$则能表示所有$P_i(x_i,y_i), a \le x_i \le b$。
@@ -47,6 +50,7 @@ date: 2025-06-07
 	}
 	```
 
+上述过程的时间复杂度为$O(q\log{n})$
 ## 例题
 
 ### [Codeforces Round 909 Div.3 G. Unusual Entertainment](https://codeforces.com/contest/1899/problem/G)
