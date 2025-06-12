@@ -1,7 +1,7 @@
 ---
 title: 如何在Linux平台部署网络扫描仪
 created: 2025-06-11T22:54:00
-modified: 2025-06-12T10:57:00
+modified: 2025-06-12T12:25:00
 ---
 ## 介绍
 
@@ -135,10 +135,18 @@ scanimage --format=png > output.png
 ```sh
 scanimage -d "net:192.168.114.1:brother4:bus1;dev5" --format=png > output.png
 ```
-#### 其他SANE前端
+#### 其他工具
 
-GNOME Document Scanner
+scanimage是一个纯命令行的程序，无法实时预览扫描结果，并不是很好用，这里有其他的一些SANE前端可供使用：
+
+- [GNOME Document Scanner](https://apps.gnome.org/SimpleScan/)
+- [Skanlite](https://apps.kde.org/skanlite/)
 
 ### Windows
 
-你不能直接使用Windows自带的扫描工具，因为它采用的扫描协议与SANE不同。但是你可以试着用其他的一些工具。
+你不能直接使用Windows自带的扫描工具，因为它采用的扫描协议与SANE不同。但是你可以试着用其他的一些工具，虽然都不好用。等我有时间了想办法参悟一下SANE，试着用C#写一个。
+
+#### 其他工具
+
+- [SANEWinDS](https://sourceforge.net/projects/sanewinds/)
+- [SaneTwain](https://sanetwain.ozuzo.net/)
