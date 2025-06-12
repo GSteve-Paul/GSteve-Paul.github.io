@@ -1,15 +1,15 @@
 ---
 title: 如何在Linux平台部署网络扫描仪
 created: 2025-06-11T22:54:00
-modified: 2025-06-12T00:09:00
+modified: 2025-06-12T10:57:00
 ---
 ## 介绍
 
 如果你用过网络打印机，你能很好地理解网络扫描仪是什么——网络扫描仪就是在一个网络中共享的扫描仪。具体而言它的作用就是，可以在一个扫描仪接入一个主机后，让这个主机所在的网络里的其他主机通过网络连接这个网络扫描仪而不用把这个扫描仪直接接入其他主机。这省去了很多麻烦。
 
 从这里，我们引入几个名词：
-**扫描仪服务器**：扫描仪直接连入的主机。
-**客户端主机**：与扫描仪服务器处于同一网络下，能与扫描仪服务器通信的主机。
+- **扫描仪服务器**：扫描仪直接连入的主机。
+- **客户端主机**：与扫描仪服务器处于同一网络下，能与扫描仪服务器通信的主机。
 
 这个教程会教会你如何在Ubuntu上部署SANE服务以建立网络打印机，并让客户端顺利连接访问。
 
@@ -47,7 +47,7 @@ device `brother4:bus1;dev5' is a Brother MFC-7480D USB scanner
 ```sh
 vim /etc/sane.d/saned.conf
 ```
-找到如下所示的地方，这里配置的就是客户端可以从哪里访问服务器：
+找到如下所示的地方，这里配置的就是哪些客户端主机可以访问这个扫描仪服务器：
 ```
 ## Access list
 # A list of host names, IP addresses or IP subnets (CIDR notation) that
@@ -85,15 +85,16 @@ vim /etc/sane.d/saned.conf
 ```sh
 systemctl start saned.socket
 ```
-如果你希望它每次开机都会自启动，请输入以下命令：
-```sh
-systemctl enable saned.socket
-```
+
+到这里，你的扫描仪服务器配置就已经完成了。
+
 ## 客户端配置
 
 ### Linux
 
-我这里客户端主机的系统也是Ubuntu 22.04 LTS。
+我这里客户端主机的系统是Ubuntu 22.04 LTS。
+
+#### 配置自动扫描
 
 首先打开这个配置文件：
 ```sh
@@ -120,15 +121,24 @@ vim /etc/sane.d/net.conf
 ```sh
 scanimage -L
 ```
-若一切正常，将会显示如下类似的信息：
+若配置成功且一切正常，将会显示如下类似的信息：
 ```
 device `net:192.168.114.1:brother4:bus1;dev5' is a Brother MFC-7480D USB scanner
 ```
+#### 测试
 
-#### 可用软件
+利用`scanimage`进行一次测试：
+```sh
+scanimage --format=png > output.png
+```
+若需要指定扫描仪，可以添加`-d`参数：
+```sh
+scanimage -d "net:192.168.114.1:brother4:bus1;dev5" --format=png > output.png
+```
+#### 其他SANE前端
 
-scanimage, Document Scanner
+GNOME Document Scanner
 
 ### Windows
 
-待补充
+你不能直接使用Windows自带的扫描工具，因为它采用的扫描协议与SANE不同。但是你可以试着用其他的一些工具。
