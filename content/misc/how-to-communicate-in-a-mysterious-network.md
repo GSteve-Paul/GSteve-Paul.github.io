@@ -1,7 +1,7 @@
 ---
 title: 如何在复杂网络环境下通信
 created: 2025-06-08T23:22:00
-modified: 2025-06-16T23:03:00
+modified: 2025-06-18T00:10:00
 ---
 ## 背景
 
@@ -132,9 +132,15 @@ ip route add 10.118.0.0/16 via 10.118.0.1 metric 1
 ```sh
 arp -n
 ```
+可能会打印一下信息：
+```
+Address                  HWtype  HWaddress           Flags Mask            Iface
+10.118.203.170           ether   TTTTTTTTTTTTTTTTT   C                     wlp3s0
+10.118.0.1               ether   RRRRRRRRRRRRRRRRR   C                     wlp3s0
+```
 利用这个命令修改ARP表：
 ```sh
-ip neigh change 10.118.203.170 lladdr <路由器的MAC地址> nud reachable
+ip neigh change 10.118.203.170 lladdr <路由器的MAC地址> nud reachable dev <网卡>
 ```
 这样一来，在A发送给B一个数据包的数据链路层就会发生这样的事：要找到目的MAC地址，就先看看B是不是在链路上，观察一下路由表，发现是的。于是把修改过的B主机的MAC地址（实际上是路由器的MAC地址）填入MAC帧的目的MAC地址字段。
 
@@ -145,3 +151,54 @@ ip neigh change 10.118.203.170 lladdr <路由器的MAC地址> nud reachable
 在传统的TCP/IP五层模型下，TCP是以IP数据报为载体进行发送的，这样的TCP包会被拦截掉，那我们可以尝试在发送端把TCP的包放在一种特殊的UDP的包的数据段，以一种特殊的UDP为载体进行发送。在接收端把这些特殊的UDP包解包后提取出TCP即可。
 
 这样的软件已经有人做过了，名叫[WireGuard](https://www.wireguard.com/)。
+
+>WireGuard® is an extremely simple yet fast and modern VPN that utilizes **state-of-the-art [cryptography](https://www.wireguard.com/protocol/)**. 
+
+以防你不知道什么是VPN，这里摘了一段维基百科的内容：
+
+> **Virtual private network** (**VPN**) is a [network architecture](https://en.wikipedia.org/wiki/Network_architecture "Network architecture") for virtually extending a [private network](https://en.wikipedia.org/wiki/Private_network "Private network") (i.e. any [computer network](https://en.wikipedia.org/wiki/Computer_network "Computer network") which is not the public [Internet](https://en.wikipedia.org/wiki/Internet "Internet")) across one or multiple other networks which are either untrusted (as they are not controlled by the entity aiming to implement the VPN) or need to be isolated (thus making the lower network invisible or not directly usable).[[1]](https://en.wikipedia.org/wiki/Virtual_private_network#cite_note-NIST-1)
+
+而WireGuard就是利用UDP隧道打洞，其会把VPN中的各主机间的TCP包放在UDP的数据段里发送（会做一些加密等措施进行混淆）。我们这里只是利用它会建立UDP隧道这一特性。
+
+这需要在A、B两台主机上安装WireGuard，进行如下配置：
+
+A主机：
+```
+[Interface]
+Address = 192.168.114.2/32
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+# B
+[Peer]
+PublicKey = YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
+AllowedIPs = 192.168.114.0/24
+EndPoint = 10.118.203.170:51820 
+PersistentKeepalive = 25
+
+```
+
+B主机：
+```
+[Interface]
+Address = 192.168.114.1/24
+ListenPort = 51820
+PrivateKey = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# A
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+AllowedIPs = 192.168.114.2/32
+
+```
+
+这样，A与B之间借助WireGuard就能够正常进行TCP通信了。在这里A主机和B主机做EndPoint都没问题，原因是它们本来就在网络内可以正常用UDP互相进行通信。
+
+这里有WireGuard配置的更详细内容： https://www.skyone.host/2024/wireguard-configure 。
+
+## 结语
+
+聪明的朋友可能看出来了这篇文章其实具有一定的实际意义，但作者建议你最好是能够合理、合法地运用知识方便生活而不是破坏和谐社会。
+
+如果你对文章中的想法和实践有疑惑或者建议，也欢迎在下面留言。
+
+
