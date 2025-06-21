@@ -7,9 +7,13 @@ const PageTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCompo
   const title = cfg?.pageTitle ?? i18n(cfg.locale).propertyDefaults.title
   const baseDir = pathToRoot(fileData.slug!)
   return (
-    <h2 class={classNames(displayClass, "page-title")}>
-      <a href={baseDir}>{title}</a>
-    </h2>
+    <div>
+      <script type="text/javascript" id="clstr_globe" src="//clustrmaps.com/globe.js?d=YlsGekbnNK41WXrqJD77XFDxV0HdS9sS8vEUOcU0DUo">
+      </script>
+      <h2 class={classNames(displayClass, "page-title")}>
+        <a href={baseDir}>{title}</a>
+      </h2>
+    </div>
   )
 }
 
