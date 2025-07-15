@@ -30,7 +30,6 @@ export default ((opts?: Partial<ContentMetaOptions>) => {
       const segments: (string | JSX.Element)[] = []
 
       if (fileData.dates) {
-        segments.push("修改于")
         segments.push(<Date date={getDate(cfg, fileData)!} locale={cfg.locale} />)
       }
 

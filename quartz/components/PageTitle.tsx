@@ -8,8 +8,6 @@ const PageTitle: QuartzComponent = ({ fileData, cfg, displayClass }: QuartzCompo
   const baseDir = pathToRoot(fileData.slug!)
   return (
     <div>
-      <script type="text/javascript" id="clstr_globe" src="//clustrmaps.com/globe.js?d=YlsGekbnNK41WXrqJD77XFDxV0HdS9sS8vEUOcU0DUo">
-      </script>
       <h2 class={classNames(displayClass, "page-title")}>
         <a href={baseDir}>{title}</a>
       </h2>
