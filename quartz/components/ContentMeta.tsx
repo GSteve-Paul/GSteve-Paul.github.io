@@ -30,12 +30,8 @@ export default ((opts?: Partial<ContentMetaOptions>) => {
       const segments: (string | JSX.Element)[] = []
 
       if (fileData.dates) {
-        segments.push("📖：")
-        segments.push(<Date date={getDateByDataType(fileData, "created")!} locale={cfg.locale} />)
-        segments.push("✏️：")
-        segments.push(<Date date={getDateByDataType(fileData, "modified")!} locale={cfg.locale} />)
-        segments.push("🚀：")
-        segments.push(<Date date={getDateByDataType(fileData, "published")!} locale={cfg.locale} />)
+        segments.push("修改于")
+        segments.push(<Date date={getDate(cfg, fileData)!} locale={cfg.locale} />)
       }
 
       // Display reading time if enabled
