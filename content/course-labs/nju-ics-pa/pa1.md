@@ -329,7 +329,7 @@ void isa_reg_display()
 ## 阶段2
 ### 表达式求值
 
-首先我们需要进行词法分析：把每一个token识别出来。在这里需要简单学习一些关于正则表达式的知识，可以通过[这个网站]([Regex Learn - 逐步从零基础到高阶。](https://regexlearn.com/zh-cn))进行学习。
+首先我们需要进行词法分析：把每一个token识别出来。在这里需要简单学习一些关于正则表达式的知识，可以通过[这个网站](https://regexlearn.com/zh-cn)进行学习。
 
 ```c title="$NEMU_HOME/src/monitor/sdb/expr.c"
 static struct rule
