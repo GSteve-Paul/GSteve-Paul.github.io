@@ -1,7 +1,6 @@
 ---
 title: PA0
-tags:
-  - NJU-ICS-PA
+tags: []
 ---
 ## 开发环境
 

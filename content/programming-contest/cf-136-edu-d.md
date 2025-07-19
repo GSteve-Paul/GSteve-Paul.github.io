@@ -2,7 +2,7 @@
 title: Edu Codeforces Round 136 D题
 date: 2023-07-06
 tags:
-  - Codeforces
+  - 算法题解
 ---
 先贴一个题目链接[D. Reset K Edges](https://codeforces.com/contest/1739/problem/D)
 <hr>

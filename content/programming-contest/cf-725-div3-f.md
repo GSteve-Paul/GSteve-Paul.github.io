@@ -2,7 +2,7 @@
 title: Codeforces Round 725(Div.3) F题
 date: 2023-06-29
 tags:
-  - Codeforces
+  - 算法题解
 ---
 先贴一个题目链接[F. Interesting Function](https://codeforces.com/contest/1538/problem/F)
 

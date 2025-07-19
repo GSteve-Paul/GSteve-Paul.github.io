@@ -2,7 +2,7 @@
 title: 2021年ICPC NAC J题
 date: 2023-05-07
 tags:
-  - 2021年ICPC北美决赛
+  - 算法题解
 ---
 这个比赛的全称是ICPC North America Championship 2021
 

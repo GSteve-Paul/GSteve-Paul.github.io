@@ -2,7 +2,7 @@
 title: Codeforces Round 882(Div.2) D题
 date: 2023-07-14
 tags:
-  - Codeforces
+  - 算法题解
 ---
 先贴一个题目链接[D. Row Major](https://codeforces.com/contest/1844/problem/D)
 <hr>
