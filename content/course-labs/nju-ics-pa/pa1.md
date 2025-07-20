@@ -129,7 +129,7 @@ void cpu_exec(uint64_t n);
 
 ####  潜在的威胁（建议二周目思考）
 
-可以看下stackoverflow上的[这个问题](https://stackoverflow.com/questions/50605/signed-to-unsigned-conversion-in-c-is-it-always-safe)的高赞回答，引用的就是[C99 Standard文档](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf)的内容。
+可以看下stackoverflow上的[这个问题](https://stackoverflow.com/questions/50605/signed-to-unsigned-conversion-in-c-is-it-always-safe)的高赞回答，引用的就是[C99 Standard文档](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf)的内容。按照这里的说法，`-1`将会被`+(ULONG_MAX + 1)`变成`ULONG_MAX`。对于补码机器，实际上就是内存里的位就没变。
 
 ####  谁来指示程序的结束?
 
