@@ -113,8 +113,8 @@ static int decode_exec(Decode *s)
 	        }                                                                   \
 	    } while (0)
 	```
-3. 关于`##__VA_ARGS__`的[使用技巧](https://en.cppreference.com/w/cpp/preprocessor/replace)。
-	> Note: some compilers offer an extension that allows ## to appear after a comma and before `__VA_ARGS__`, in which case the ## does nothing when the variable arguments are present, but removes the comma when the variable arguments are not present: this makes it possible to define macros such as fprintf (stderr, format, ##__VA_ARGS__). This can also be achieved in a standard manner using `__VA_OPT__`, such as fprintf (stderr, format __VA_OPT__(, ) __VA_ARGS__).(since C++20)
+3. 关于`__VA_ARGS__`的[使用技巧](https://en.cppreference.com/w/cpp/preprocessor/replace)。
+	> Note: some compilers offer an extension that allows `##` to appear after a comma and before `__VA_ARGS__`, in which case the `##` does nothing when the variable arguments are present, but removes the comma when the variable arguments are not present: this makes it possible to define macros such as `fprintf (stderr, format,  ##__VA_ARGS__)`. This can also be achieved in a standard manner using `__VA_OPT__`, such as `fprintf (stderr, format __VA_OPT__(, ) __VA_ARGS__)`.(since C++20)
 4. 关于符号扩展`SEXT(x, len)`的技巧，其中用到了GCC的[语句表达式扩展](https://gcc.gnu.org/onlinedocs/gcc/Statement-Exprs.html)。对于这个代码
 	```c  title="$NEMU_HOME/include/macro.h"
 	#define SEXT(x, len) ({ struct { int64_t n : len; } __x = { .n = x }; (uint64_t)__x.n; })
