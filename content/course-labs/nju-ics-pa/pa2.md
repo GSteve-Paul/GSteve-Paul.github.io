@@ -157,3 +157,119 @@ INSTPAT("010000? ????? ????? 101 ????? 00100 11", srai, I, R(rd) = ((sword_t)src
 ```sh
 riscv64-linux-gnu-objdump -M no-aliases -d unalign-riscv32-nemu.elf
 ```
+
+## 阶段2
+
+### 程序，运行时环境与AM
+
+#### 这又能怎么样呢
+
+解耦后，能在debug的时候更容易找到bug所存在的层次。例如库和上层程序，它俩是分离的能方便分别测试。
+
+#### 为什么要有AM? (建议二周目思考)
+
+AM给的运行时环境比较粗糙且简单，比较靠底层，并未为安全着想。而操作系统本身是运行在AM上的软件，其运行时环境更加复杂且多样，会更加考虑操作系统中的概念（例如进程、文件系统）以方便在操作系统上的程序的开发。
+
+#### 了解一下`volatile`关键字：
+
+> An object that has volatile-qualified type may be modified in ways unknown to the implementation or have other unknown side effects. Therefore any expression referring to such an object shall be evaluated strictly according to the rules of the abstract machine, as described in 5.1.2.3. Furthermore, at every sequence point the value last stored in the object shall agree with that prescribed by the abstract machine, except as modified by the unknown factors mentioned previously. What constitutes an access to an object that has volatile-qualified type is implementation-defined.
+> 
+> A volatile declaration may be used to describe an object corresponding to a memory-mapped input/output port or an object accessed by an asynchronously interrupting function. Actions on objects so declared shall not be ‘‘optimized out’’ by an implementation or reordered except as permitted by the rules for evaluating expressions.
+
+再读一读C99手册里关于side effects的说法：
+
+> Accessing a volatile object, modifying an object, modifying a file, or calling a function that does any of those operations are all side effects,11) which are changes in the state of the execution environment. Evaluation of an expression may produce side effects. At certain specified points in the execution sequence called sequence points, all side effects of previous evaluations shall be complete and no side effects of subsequent evaluations shall have taken place. (A summary of the sequence points is given in annex C.)
+
+这样我们就会知道，volatile关键字的作用是把对这个volatile对象的读操作也视为一种side effects，这会让它的读操作不会被优化，而是严格按照语义执行。因此它事实上并不能用于多线程环境中。
+
+#### 阅读Makefile
+
+这一块的Makefile有点复杂，所以我们先直接在这里梳理一下AM中的程序是如何构建的。
+
+对于`cpu_tests`里的小例子`dummy`，假设我们用这样的命令来运行：
+
+```sh
+make ARCH=riscv32-nemu ALL=dummy run
+```
+
+首先会通过`cpu_tests`里的Makefile生成一个Makefile.dummy，这个Makefile.dummy会include`$AM_HOME/Makefile`，使得`cpu_tests`里的东西和`abstract_machine`连动起来，同时会运行`$AM_HOME/Makefile`里的`run`目标。因此Makefile会打印如下信息：
+```
+# Building dummy-run [riscv32-nemu]
+```
+
+这个`run`目标也不是直接存在于`$AM_HOME/Makefile`的，而是通过里面的两层include，实际上在`$AM_HOME/scripts/platform/nemu.mk`里面。然后这个`run`目标依赖于`insert_arg`，又依赖于`image`，接着依赖于`image-dep`，最后可以看到在`$AM_HOME/Makefile`里`image-dep`又依赖于`$(LIBS)`和`$(IMAGE).elf`。接着读源码，这个`$(LIBS)`就可以又去make`$AM_HOME/Makefile`里的archieve目标，这个archieve目标就会去把库里的`.c`编译成`.o`后，用AR打包成一个[静态库](https://www.yolinux.com/TUTORIALS/LibraryArchives-StaticAndDynamic.html)。因此会打印如下信息：
+
+```
+# Building am-archive [riscv32-nemu]
++ CC src/platform/nemu/trm.c
++ CC src/platform/nemu/ioe/ioe.c
++ CC src/platform/nemu/ioe/timer.c
++ CC src/platform/nemu/ioe/input.c
++ CC src/platform/nemu/ioe/gpu.c
++ CC src/platform/nemu/ioe/audio.c
++ CC src/platform/nemu/ioe/disk.c
++ CC src/platform/nemu/mpe.c
++ AS src/riscv/nemu/start.S
++ CC src/riscv/nemu/cte.c
++ AS src/riscv/nemu/trap.S
++ CC src/riscv/nemu/vme.c
++ AR -> build/am-riscv32-nemu.a
+```
+
+以及：
+
+```
+# Building klib-archive [riscv32-nemu]
++ CC src/int64.c
++ CC src/string.c
++ CC src/stdlib.c
++ CC src/stdio.c
++ CC src/cpp.c
++ AR -> build/klib-riscv32-nemu.a
+```
+
+而这个`$(IMAGE).elf`则会先把`cpu_tests`里指定的`dummy.c`编译成`dummy.o`，然后用LD和之前已经构建好的`.a`静态库进行链接，得到elf文件，这样`image-dep`目标就已经完成了。所以会输出以下内容。
+
+```
++ CC tests/dummy.c
+# Creating image [riscv32-nemu]
++ LD -> build/dummy-riscv32-nemu.elf
+```
+
+然后在`$AM_HOME/scripts/platform/nemu.mk`里完成`image`目标，其实这里就是先用objdump进行反汇编，输出到一个txt文件中，再用objcopy创建一个bin文件。到这里`image`目标就完成了，然后再是完成`insert-arg`目标，最后在`run`目标中，把这个bin文件作为映像放到NEMU中运行。
+
+#### 通过批处理模式运行NEMU
+
+只要看了Makefile的源码，这块就变得十足的简单了。甚至考查的地方都是最简单的部分。整个AM中的Makefile和NEMU连动的地方有且只有`image`目标里，即：
+
+```make title="$AM_HOME/scripts/platform/nemu.mk" showLineNumbers{29}
+run: insert-arg
+	$(MAKE) -C $(NEMU_HOME) ISA=$(ISA) run ARGS="$(NEMUFLAGS)" IMG=$(IMAGE).bin
+```
+
+注意到NEMU里面有一个参数`-b`（`--batch`），它可以通过函数`sdb_set_batch_mode`启用批处理模式，而通过阅读NEMU的Makefile，我们可以知道实际上上面传入的`ARGS`就是给NEMU运行时的参数：
+
+```make title="$NEMU_HOME/scripts/native.mk" showLineNumbers{27} /$(ARGS)/
+override ARGS ?= --log=$(BUILD_DIR)/nemu-log.txt 
+override ARGS += $(ARGS_DIFF)
+
+# Command to execute NEMU
+IMG ?=
+NEMU_EXEC := $(BINARY) $(ARGS) $(IMG)
+
+run-env: $(BINARY) $(DIFF_REF_SO)
+
+run: run-env
+	$(call git_commit, "run NEMU")
+	$(NEMU_EXEC)
+```
+
+所以我们在`$AM_HOME/scripts/platform/nemu.mk`的`NEMUFLAGS`里添个`--batch`就行了。
+
+```make title="$AM_HOME/scripts/platform/nemu.mk" showLineNumbers{15}
+NEMUFLAGS += -l $(shell dirname $(IMAGE).elf)/nemu-log.txt --batch --elf=$(IMAGE).elf 
+```
+
+#### RISC-V指令测试
+
+没有去真正测这么多……
