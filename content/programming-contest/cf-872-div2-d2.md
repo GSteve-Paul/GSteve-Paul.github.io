@@ -22,7 +22,7 @@ D2难就难在它k不只是1,2,3了.
 
 则设若$k$为偶数,那么只要上述证明中$k=2s$,由下图很容易理解:
 
-![IMG_20230509_225924.jpg](../data/programming-contest/cf-872-div2-d2/444940eaf501451b83e63d3e25d99f07~tplv-k3u1fbpfcp-watermark.image)
+![IMG_20230509_225924.jpg](../data/programming-contest/cf-872-div2-d2/444940eaf501451b83e63d3e25d99f07.image)
 
 那么我们也可以知道对于k(偶数),其某种方案下的好点的分布也是在一条链上,因此对于任意的方案,好点的个数$=$串起来的边数$+1$.那么我们最终要求的就是所有串起来的边数+$C(n,k)$.
 

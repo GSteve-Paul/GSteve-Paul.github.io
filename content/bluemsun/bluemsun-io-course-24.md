@@ -15,7 +15,7 @@ Java IO是就是用Java 执行输入输出操作.它能够让用户们通过inpu
 *   节点流,处理流 (前者是从一个特定的地方读写数据,直接连接数据源;而后者是对一个已存在的流的连接和封装，是一种典型的装饰器设计模式)
 *   其他(转换流,缓冲流,对象流)
 
-![1290084-20180415203406453-566524870.png](../data/bluemsun/bluemsun-io-course-24/90173816e941434fa73eefe5ec989975~tplv-k3u1fbpfcp-watermark.image)
+![1290084-20180415203406453-566524870.png](../data/bluemsun/bluemsun-io-course-24/90173816e941434fa73eefe5ec989975.image)
 
 ## Java IO 四大基流
 
@@ -223,7 +223,7 @@ public class Demo01
 }
 ```
 
-![image.png](../data/bluemsun/bluemsun-io-course-24/ba7ac30e42414addaff6bab7df79fa9e~tplv-k3u1fbpfcp-watermark.image)
+![image.png](../data/bluemsun/bluemsun-io-course-24/ba7ac30e42414addaff6bab7df79fa9e.image)
 
 比较SHA-256,发现是一样的,说明复制成功.
 
@@ -458,7 +458,7 @@ public class Main
 
 有`DataInputStream`和`DataOutputStream`两个类,均继承自过滤流,有相似的共同祖先字节输入输出流.
 
-![屏幕截图 2023-04-06 081150.png](../data/bluemsun/bluemsun-io-course-24/3aa23285b98a48d6b0551901f4f0a147~tplv-k3u1fbpfcp-watermark.image)
+![屏幕截图 2023-04-06 081150.png](../data/bluemsun/bluemsun-io-course-24/3aa23285b98a48d6b0551901f4f0a147.image)
 
 可以用图上的方法对流进行装饰.
 
@@ -570,7 +570,7 @@ public static void tryconv() {
 
 得到的输出在IDEA的控制台中显示如下:
 
-![屏幕截图 2023-04-06 091352.png](../data/bluemsun/bluemsun-io-course-24/31da6bd0568143aab8651fa200fd0fd0~tplv-k3u1fbpfcp-watermark.image)
+![屏幕截图 2023-04-06 091352.png](../data/bluemsun/bluemsun-io-course-24/31da6bd0568143aab8651fa200fd0fd0.image)
 
 ### 对象流
 
@@ -666,7 +666,7 @@ public static void OutputTriangle() {
 
 看看输出出来的二进制文件(看不懂):
 
-![屏幕截图 2023-04-06 213455.png](../data/bluemsun/bluemsun-io-course-24/1dd4e5569fe44d2590e602f8666019d5~tplv-k3u1fbpfcp-watermark.image)
+![屏幕截图 2023-04-06 213455.png](../data/bluemsun/bluemsun-io-course-24/1dd4e5569fe44d2590e602f8666019d5.image)
 
 注意:
 

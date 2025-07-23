@@ -14,7 +14,7 @@ tags:
 
 每一个类都有与之对应的Class对象，用来保存类的一些元数据（字段，方法，注解等等）。
 
-![vZ4onhuJWcALHNP.png](../data/bluemsun/java-reflection/3e0a6eb0bea84f149d258d1c6f1861f5~tplv-k3u1fbpfcp-jj-mark:0:0:0:0:q75.image)
+![vZ4onhuJWcALHNP.png](../data/bluemsun/java-reflection/3e0a6eb0bea84f149d258d1c6f1861f5.image)
 
 通过粗略的对Java类加载机制的了解，可以知道：
 

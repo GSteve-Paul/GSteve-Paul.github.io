@@ -10,7 +10,7 @@ tags:
 
 拿样例1做例子,如图所示:
 
-![IMG_20230401_173026.jpg](../data/programming-contest/15-jlcpc-H/e12d97a371a5468698c5a4bb6a5b42f2~tplv-k3u1fbpfcp-watermark.image)
+![IMG_20230401_173026.jpg](../data/programming-contest/15-jlcpc-H/e12d97a371a5468698c5a4bb6a5b42f2.image)
 
 注意到题目中给的数据有3e5那么大,所以拿个数字每经过一个点都去 * 10+新的数字固然是不可行的.因此我们需要去找一个更加科学的方法.
 

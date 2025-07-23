@@ -16,7 +16,7 @@ tags:
 
 考虑到只要一个回文字符串左边出现了ab,则右边就必然出现ba,那么我们可以只研究这个字符串的一半:
 
-![IMG_20230507_185021.jpg](../data/programming-contest/2021-icpc-north-america-championship-J/8d5809fec8f7404baeab04d2c7557bba~tplv-k3u1fbpfcp-watermark.image)
+![IMG_20230507_185021.jpg](../data/programming-contest/2021-icpc-north-america-championship-J/8d5809fec8f7404baeab04d2c7557bba.image)
 
 因此可以得到状态转移方程:
 ```c++
