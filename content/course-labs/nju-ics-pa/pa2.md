@@ -1,9 +1,12 @@
 ---
 title: PA2
 tags:
-  - 模拟器
   - RISC-V
+  - 图灵机
+  - 冯·诺伊曼计算机系统
 ---
+欢迎来到PA2，个人感觉是ICS2024中任务量最重的一个。
+
 ## 阶段1
 
 ### 不停计算的机器
@@ -589,3 +592,667 @@ int main()
 另外还有个`va_copy`，在这里就被直接当作普普通通的指针的复制就行了。
 
 ### 基础设施(2)
+
+现在我们又回到了NEMU去完成一些必要的基础设施。
+
+#### 指定trace输出的时机和条件
+
+根据教程中所说，很容易能找到记录itrace的地方，而指定其输出条件的地方则是在这里：
+
+```c title="$NEMU_HOME/src/cpu/cpu-exec.c"
+static void trace_and_difftest(Decode *_this, vaddr_t dnpc)
+{
+#ifdef CONFIG_ITRACE_COND
+    if (ITRACE_COND)
+    {
+        log_write("%s\n", _this->logbuf);
+    }
+#endif
+    if (g_print_step)
+    {
+        IFDEF(CONFIG_ITRACE, puts(_this->logbuf));
+    }
+    IFDEF(CONFIG_DIFFTEST, difftest_step(_this->pc, dnpc));
+#ifdef CONFIG_WATCHPOINT
+    bool check_wp();
+    bool checked = check_wp();
+    if (checked)
+    {
+        nemu_state.state = NEMU_STOP;
+    }
+#endif
+}
+```
+
+而这个`ITRACE_COND`一开始是在Kconfig生成出来的一个C语言的宏`CONFIG_ITRACE_COND`，然后通过Makefile中给cflags添进去的宏：
+
+```make title="$NEMU_HOME/Makefile"
+CFLAGS_TRACE += -DITRACE_COND=$(if $(CONFIG_ITRACE_COND),$(call remove_quote,$(CONFIG_ITRACE_COND)),true)
+```
+
+itrace因为是大佬们写的，所以输出挺规整的。因此可以考虑用`grep`，`awk`，`sed`等等工具进行筛选处理。这些我还都不是很熟。之后学学吧。
+
+#### 实现iringbuf
+
+说实话，如果实现成像教程里面那样的格式还挺难的，一般来说我只能保证最后一行是导致崩溃的那一条指令。因为在之后添加了输入、中断机制等等之后没有办法去预测接下来会执行的指令。
+
+不过还是照样可以用ring buffer来实现的。很典型的要用两个指针来表示数据的开头和结尾。不过需要注意的是为了判断空和满需要特殊处理，因为这两个状态下的两个指针的相对状态都一样。
+
+核心代码如下：
+
+```c title="$NEMU_HOME/src/cpu/iringbuf.c"
+static size_t nxt_idx(int idx)
+{
+    return (idx + 1) % NR_IRINGBUF;
+}
+
+IR *push_ir()
+{
+    IR *tmp = iringbuf + tail;
+    if (tail == head && !first)
+    {
+        head = nxt_idx(head);
+    }
+    tail = nxt_idx(tail);
+    first = false;
+    return tmp;
+}
+
+void print_ir()
+{
+    if (first)
+        return;
+    size_t idx = head;
+    puts(iringbuf[idx].logbuf);
+    log_write("%s\n", iringbuf[idx].logbuf);
+    idx = nxt_idx(idx);
+    while (idx != tail)
+    {
+        puts(iringbuf[idx].logbuf);
+        log_write("%s\n", iringbuf[idx].logbuf);
+        idx = nxt_idx(idx);
+    }
+}
+```
+
+这是使用方式：
+
+```c title="$NEMU_HOME/src/cpu/cpu-exec.c" {31-32, 41}
+static void exec_once(Decode *s, vaddr_t pc)
+{
+    s->pc = pc;
+    s->snpc = pc;
+    isa_exec_once(s);
+    cpu.pc = s->dnpc;
+#ifdef CONFIG_ITRACE
+    char *p = s->logbuf;
+    p += snprintf(p, sizeof(s->logbuf), FMT_WORD ":", s->pc);
+    int ilen = s->snpc - s->pc;
+    int i;
+    uint8_t *inst = (uint8_t *)&s->isa.inst.val;
+    for (i = ilen - 1; i >= 0; i--)
+    {
+        p += snprintf(p, 4, " %02x", inst[i]);
+    }
+    int ilen_max = MUXDEF(CONFIG_ISA_x86, 8, 4);
+    int space_len = ilen_max - ilen;
+    if (space_len < 0)
+        space_len = 0;
+    space_len = space_len * 3 + 1;
+    memset(p, ' ', space_len);
+    p += space_len;
+
+    void disassemble(char *str, int size, uint64_t pc, uint8_t *code,
+                     int nbyte);
+    disassemble(p, s->logbuf + sizeof(s->logbuf) - p,
+                MUXDEF(CONFIG_ISA_x86, s->snpc, s->pc),
+                (uint8_t *)&s->isa.inst.val, ilen);
+
+    IR *new_ir = push_ir();
+    strcpy(new_ir->logbuf, s->logbuf);
+#endif
+}
+
+...
+
+void assert_fail_msg()
+{
+    isa_reg_display();
+    print_ir();
+    statistic();
+}
+```
+
+效果如图，这是模拟器自带的映像跑得结果，和itrace的输出格式上长的一模一样：
+
+```
+0x80000000: 00 00 02 97 auipc   t0, 0
+0x80000004: 00 02 88 23 sb      zero, 0x10(t0)
+0x80000008: 01 02 c5 03 lbu     a0, 0x10(t0)
+0x8000000c: 00 10 00 73 ebreak
+```
+
+#### 实现mtrace
+
+实现方式很简单，就像教程里面所说的一样。
+
+```c title="$NEMU_HOME/src/memory/paddr.c"
+static void print_paddr_read(paddr_t addr, int len, word_t res)
+{
+#ifdef CONFIG_MTRACE
+    if (MTRACE_COND)
+    {
+        log_write(FMT_WORD ",%d,r"
+                           ": " FMT_WORD "\n",
+                  addr, len, res);
+    }
+#endif
+    //		printf(FMT_WORD ",%d,r" ": " FMT_WORD "\n", addr, len, res);
+}
+
+word_t paddr_read(paddr_t addr, int len)
+{
+    word_t res = 0;
+    if (likely(in_pmem(addr)))
+    {
+        res = pmem_read(addr, len);
+        print_paddr_read(addr, len, res);
+        return res;
+    }
+    IFDEF(CONFIG_DEVICE, res = mmio_read(addr, len); return res);
+    out_of_bound(addr);
+    return 0;
+}
+
+static void print_paddr_write(paddr_t addr, int len, word_t res)
+{
+#ifdef CONFIG_MTRACE
+    if (MTRACE_COND)
+    {
+        log_write(FMT_WORD ",%d,w"
+                           ": " FMT_WORD "\n",
+                  addr, len, res);
+    }
+#endif
+    //		printf(FMT_WORD ",%d,w" ": " FMT_WORD "\n", addr, len, res);
+}
+
+void paddr_write(paddr_t addr, int len, word_t data)
+{
+    if (likely(in_pmem(addr)))
+    {
+        pmem_write(addr, len, data);
+        print_paddr_write(addr, len, data);
+        return;
+    }
+    IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
+    out_of_bound(addr);
+}
+```
+
+然后我们可以照猫画虎地，像itrace一样做一个mtrace的Kconfig的配置：
+
+```kconfig
+config MTRACE
+	depends on TRACE && TARGET_NATIVE_ELF && ENGINE_INTERPRETER
+	bool "Enable memory tracer"
+	default y
+
+config MTRACE_COND
+	depends on MTRACE
+	string "Only trace memory when the condition is true"
+	default "true"
+```
+
+然后测试一下NEMU自带的映像，会输出这样的内存访问踪迹：
+
+```
+0x80000000,4,r: 0x00000297
+0x80000004,4,r: 0x00028823
+0x80000010,1,w: 0x00000000
+0x80000008,4,r: 0x0102c503
+0x80000010,1,r: 0x00000000
+0x8000000c,4,r: 0x00100073
+```
+
+#### 消失的符号
+
+原因是这些东西不会被`add.c`以外的文件所用到，所以也就不必出现在符号表中。
+
+参考《Learning Linux Binary Analysis》书中对ELF符号的定义：
+
+> Symbols are a symbolic reference to some type of data or code such as a global variable or function.
+
+而对于宏而言，它既不是变量也更不是函数，所以也不会出现在符号表中。
+
+#### 寻找"Hello World!"
+
+写个简单Hello World之后，发现事情并不简单。利用上述方法，首先发现这个字符串放在了ELF文件的0x2000附近：
+
+```
+00002000  01 00 02 00 48 65 6c 6c  6f 20 57 6f 72 6c 64 21  |....Hello World!|
+```
+
+然后观察到，它实际上是在.rodata这个section里面。
+
+```
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+...
+  [18] .rodata           PROGBITS         0000000000002000  00002000
+       0000000000000011  0000000000000000   A       0     0     4
+...
+  [29] .strtab           STRTAB           0000000000000000  000033a0
+       00000000000001da  0000000000000000           0     0     1
+```
+
+猜测可能是因为字符串字面量属于是一种不可变的量，然后把它放在rodata里更合适。更重要的是，程序运行并不需要有.strtab，也就是说它都不用被载入到内存中去，如果Hello World被放在这.strtab里面那运行时都找不到了。
+
+#### 实现ftrace
+
+实现ftrace的主要难点在于读明白`man 5 elf`，然后就会写了。
+
+关于ELF文件的知识，教程里已经说的很详细了，不过要注意的是，在Section Headers里面识别出每个Section的名字当然是需要另一个特别给出的字符串表，即.shstrtab。它所在的section下标能在ELF的head里面找到。另外，由于ELF格式是跨平台的，为了include解析ELF文件内容所需要的`elf.h`，可以直接include host机上的`elf.h`。
+
+我的ftrace实现策略如下：
+
+1. 在`parse_args`中添加一个参数选项，允许放一个ELF文件的文件路径在那儿。
+2. 在程序运行前初始化ftrace，读入符号表识别其中的所有函数，把函数的地址信息、名字放到NEMU的一个线性表里。
+3. 阅读riscv32手册后，会知道`ra`是放返回地址的寄存器。显然如果要函数返回的话，必须从`ra`读出值来，所以肯定是让`jalr`来做的。而函数调用则既可以用`jal`来小跳，也可以用`jalr`来大跳，具体可以参考伪指令`call`和`ret`。然后就在之前指令执行的地方稍微改改代码就可以了。
+4. 修改一下Kconfig等等内容，让它更加易用。
+
+下面是我的实现：
+
+```c title="$NEMU_HOME/src/isa/riscv32/inst.c"
+INSTPAT("??????? ????? ????? ??? ????? 11011 11", jal    , J, 
+		R(rd) = s->snpc; 
+		s->dnpc = imm + s->pc; 
+		call_trace(s->pc, s->dnpc);
+		);
+INSTPAT("??????? ????? ????? 000 ????? 11001 11", jalr   , I, 
+		R(rd) = s->snpc;
+		s->dnpc = (src1 + imm) & (~1);
+		if (rd == 0 && rs1 == 1)
+			return_trace(s->pc);	
+		else
+			call_trace(s->pc, s->dnpc);
+		);
+```
+
+```c title="$NEMU_HOME/src/cpu/ftrace.c"
+#include <cpu/ftrace.h>
+#include <elf.h>
+#include <common.h>
+
+#define TYPE_CALL true
+#define TYPE_RETURN false
+
+static Elf32_Off strtab_off;
+static uint32_t strtab_size;
+static Elf32_Off symtab_off;
+static uint32_t symtab_size;
+static uint16_t	sh_off;
+static uint16_t sh_size;
+static uint16_t sh_num;
+static size_t func_num = 0;
+static int spaces = 0;
+
+typedef struct Func_Info {
+	union {
+		char name[255];
+		uint32_t idx;
+	};
+	paddr_t addr;
+	paddr_t size;
+} FI;
+
+FI *finfo = NULL;
+
+void init_ftrace(const char *elf_file) {
+	func_num = 0;
+	spaces = 0;
+	//use assert() to make sure elf_file is a valid elf file.
+	FILE *f = fopen(elf_file, "rb");
+	assert(f);
+	Elf32_Ehdr ehdr;
+	size_t fread_res = 0;
+	fread_res = fread(&ehdr, 1, sizeof(ehdr), f);
+	assert(fread_res);
+	assert(ehdr.e_ident[EI_MAG0] == ELFMAG0);
+	assert(ehdr.e_ident[EI_MAG1] == ELFMAG1);
+	assert(ehdr.e_ident[EI_MAG2] == ELFMAG2);
+	sh_off = ehdr.e_shoff;
+	sh_size = ehdr.e_shentsize;
+	sh_num = ehdr.e_shnum;
+	
+	Elf32_Shdr shdr;
+	uint16_t shstrndx = ehdr.e_shstrndx;
+	fseek(f, sh_off + shstrndx * sizeof(shdr), SEEK_SET);
+	fread_res = fread(&shdr, 1, sizeof(shdr), f);
+	Elf32_Off shstrtab_off = shdr.sh_offset;	
+
+	char buf[255];
+	for (int i = 0; i < sh_num; i++) {
+		fseek(f, sh_off + i * sizeof(shdr), SEEK_SET);
+		fread_res = fread(&shdr, 1, sizeof(shdr), f);
+		assert(fread_res);
+		if (shdr.sh_type == SHT_SYMTAB) {
+			symtab_off = shdr.sh_offset;
+			symtab_size = shdr.sh_size;
+		}
+		else if (shdr.sh_type == SHT_STRTAB) {
+			uint32_t name = shdr.sh_name;
+			fseek(f, shstrtab_off + name, SEEK_SET);
+			char *_ = fgets(buf, 255, f);
+			assert(_);
+			if (strcmp(buf, ".strtab") == 0) {
+				strtab_off = shdr.sh_offset;
+				strtab_size = shdr.sh_size;
+			}
+		}
+	}
+	
+	Elf32_Sym stbl;
+	size_t sym_num = symtab_size / sizeof(stbl); 
+	fseek(f, symtab_off, SEEK_SET);
+	for (size_t i = 0; i < sym_num; i++) {
+		fread_res = fread(&stbl, 1, sizeof(stbl), f);
+		assert(fread_res);
+		func_num += stbl.st_info == 18;
+	}
+	finfo = (FI *)malloc(sizeof(FI) * func_num);
+
+	fseek(f, symtab_off, SEEK_SET);
+	size_t idx = 0;
+	for (size_t i = 0; i < sym_num; i++) {
+		fread_res = fread(&stbl, 1, sizeof(stbl), f);
+		assert(fread_res); 
+		if (stbl.st_info != 18)
+			continue;
+		finfo[idx].addr = stbl.st_value;
+		finfo[idx].size = stbl.st_size;
+		finfo[idx++].idx = stbl.st_name;
+	}
+
+	char *_ = NULL;
+	for (size_t i = 0; i < func_num; i++) {
+		fseek(f, strtab_off + finfo[i].idx, SEEK_SET);
+		_ = fgets(finfo[i].name, 255, f);
+		assert(_);
+	}
+	fclose(f);
+}
+
+__attribute__((unused)) static void print_trace(vaddr_t inst_addr, size_t func_idx, bool type) {
+/*
+  printf(FMT_WORD ": " , inst_addr);
+	for (int j = 0; j < spaces; j++)
+		printf(" ");
+	if (type)
+		printf("call ");
+	else
+		printf("ret  ");
+	printf("[%s@" FMT_WORD "]\n", finfo[func_idx].name, finfo[func_idx].addr);
+*/
+#ifdef CONFIG_FTRACE
+	if (FTRACE_COND) {
+		log_write(FMT_WORD ": ", inst_addr);
+		for (int j = 0; j < spaces; j++)
+			log_write(" ");
+		if (type)
+			log_write("call ");
+		else
+			log_write("ret  ");
+		log_write("[%s@" FMT_WORD "]\n", finfo[func_idx].name, finfo[func_idx].addr);
+	}
+#endif
+}
+
+void call_trace(vaddr_t inst_addr, vaddr_t pc) {
+#ifdef CONFIG_FTRACE
+	for (size_t i = 0; i < func_num; i++) {
+		if (pc == finfo[i].addr) {
+			print_trace(inst_addr, i, TYPE_CALL);
+			spaces += 2;
+			break;
+		}
+	}
+#endif
+}
+
+void return_trace(vaddr_t inst_addr) {
+#ifdef CONFIG_FTRACE
+	for (size_t i = 0; i < func_num; i++) {
+		if (inst_addr >= finfo[i].addr &&
+				inst_addr < finfo[i].addr + finfo[i].size) {
+			spaces -= 2;
+			print_trace(inst_addr, i, TYPE_RETURN);
+			break;
+		}
+	}
+#endif
+}
+```
+
+其他的诸如修改Kconfig、改NEMU参数传入的事情就和之前的差不多，这里就不过多赘述。
+
+这是跑`cpu-tests/tests/string.c`的一个ftrace的输出案例：
+```
+0x8000000c: call [_trm_init@0x8000012c]
+0x8000013c:   call [main@0x80000028]
+0x80000044:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x8000004c:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x80000058:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x80000060:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x80000074:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x8000007c:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x80000090:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x80000098:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x800000ac:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x800000b4:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x800000c8:     call [strcpy@0x8000014c]
+0x80000178:     ret  [strcpy@0x8000014c]
+0x800000d0:     call [strcat@0x80000188]
+0x800001dc:     ret  [strcat@0x80000188]
+0x800000d8:     call [strcmp@0x800001ec]
+0x80000214:     ret  [strcmp@0x800001ec]
+0x800000e0:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x800000f4:     call [memset@0x80000218]
+0x80000234:     ret  [memset@0x80000218]
+0x80000100:     call [memcmp@0x80000238]
+0x80000270:     ret  [memcmp@0x80000238]
+0x80000108:     call [check@0x80000010]
+0x80000014:     ret  [check@0x80000010]
+0x8000011c:   ret  [main@0x80000028]
+```
+
+这里的`_trm_init`函数没有返回很正常，因为根据`$AM_HOME/am/src/platform/nemu/trm.c`，它跑完`main`函数的东西就直接进了个`halt`函数，这个函数直接触发`NEMU_TRAP`了，也就是直接一个ebreak指令，然后机器就停机了，所以那肯定没有返回。
+
+#### 不匹配的函数调用和返回
+
+由于编译器不同，我的函数调用踪迹略显不同，但是仍然具有代表性：
+
+```
+0x8000000c: call [_trm_init@0x80000258]
+0x80000268:   call [main@0x800001cc]
+0x800001ec:     call [f0@0x80000010]
+0x80000050:       call [f3@0x80000108]
+0x8000016c:         call [f2@0x800000a4]
+0x800000f0:           call [f1@0x8000005c]
+0x80000098:             call [f0@0x80000010]
+0x80000050:               call [f3@0x80000108]
+0x8000016c:                 call [f2@0x800000a4]
+0x800000f0:                   call [f1@0x8000005c]
+0x80000098:                     call [f0@0x80000010]
+0x80000050:                       call [f3@0x80000108]
+0x8000016c:                         call [f2@0x800000a4]
+0x800000f0:                           call [f1@0x8000005c]
+0x80000098:                             call [f0@0x80000010]
+0x80000050:                               call [f3@0x80000108]
+0x8000016c:                                 call [f2@0x800000a4]
+0x800000f0:                                   call [f1@0x8000005c]
+0x80000098:                                     call [f0@0x80000010]
+0x80000050:                                       call [f3@0x80000108]
+0x8000016c:                                         call [f2@0x800000a4]
+0x800000f0:                                           call [f1@0x8000005c]
+0x80000098:                                             call [f0@0x80000010]
+0x80000058:                                             ret  [f0@0x80000010]
+0x80000100:                                           ret  [f2@0x800000a4]//注释
+```
+
+比如这里的注释处的call和ret并不匹配，正好出现在`f0`作为一个叶子函数被`f1`调用的时候。
+
+为了更好的理解这一行为，我们可以对照地看一下`f1`的C语言实现和反汇编：
+
+```asm {16, 17}
+8000005c <f1>:
+8000005c:	00000797          	auipc	a5,0x0
+80000060:	27878793          	addi	a5,a5,632 # 800002d4 <lvl>
+80000064:	0007a703          	lw	a4,0(a5)
+80000068:	00b75463          	bge	a4,a1,80000070 <f1+0x14>
+8000006c:	00b7a023          	sw	a1,0(a5)
+80000070:	00000717          	auipc	a4,0x0
+80000074:	26870713          	addi	a4,a4,616 # 800002d8 <rec>
+80000078:	00072783          	lw	a5,0(a4)
+8000007c:	00178793          	addi	a5,a5,1
+80000080:	00f72023          	sw	a5,0(a4)
+80000084:	00a05c63          	blez	a0,8000009c <f1+0x40>
+80000088:	00158593          	addi	a1,a1,1
+8000008c:	fff50513          	addi	a0,a0,-1
+80000090:	00000797          	auipc	a5,0x0
+80000094:	2347a783          	lw	a5,564(a5) # 800002c4 <func>
+80000098:	00078067          	jr	a5
+8000009c:	00100513          	li	a0,1
+800000a0:	00008067          	ret
+```
+
+```c {4}
+int f1(int n, int l) {
+  if (l > lvl) lvl = l;
+  rec ++;
+  return n <= 0 ? 1 : func[0](n - 1, l + 1);
+};
+```
+
+然后我们设想一下，已知这个`f1`函数一定是另一个函数（比如`f2`）调用的，然后假设`f1`里面参数`n`被传入的是一个1，那么`f1`又调用了`f0`函数，那么就一定会有`f0`的返回值被返回给`f1`，然后`f1`又将它原封不动地返回给了`f2`。所以，如果你是编译器，为什么不直接把`f0`的返回值直接给`f2`呢？
+
+于是，编译器就是这么做的：`f1`在调用`f0`采取的是`jr`伪指令，其实就是`jalr x0, 0(rs1)`，这就意味着他不会把`f1`的返回地址保存到`ra`寄存器里，而是让`ra`寄存器仍然保存的是`f2`处的返回地址，这样，当`f0`返回时，就会直接返回到`f2`了，能够提升一些效率。
+
+#### 冗余的符号表
+
+经过试验，hello程序可以运行。很显然，符号表里面存储的ELF符号信息对于程序的执行并没有什么作用。而且从ELF文件的Program Headers里面并不需要加载这些符号信息到内存中去也证实了这一点。
+
+用缺失了符号表的hello.o去尝试链接自然是不行的，例如一个程序要从`_start`开始，这个外部的`_start`要去调用hello.o里的`main`，结果在符号表里根本找不到`main`，就直接链接不上了。
+
+#### trace与性能优化
+
+暂时还没给我的NEMU做过任何优化，跑个马里奥都卡卡的。
+
+#### 如何生成native的可执行文件
+
+之前的解耦的架构起了效果，现在可以试着把AM里的软件先在`native`上调对再来运行！不过为了弄懂`native`，还是看看Makefile比较好。
+
+接上文的[[pa2#阅读Makefile|AM中的程序是如何构建的]]，为数不多的区别就在于，`$AM_HOME/Makefile`里include的是`$AM_HOME/scripts/native.mk`，并且所用的工具链都是本机的原生工具链，没有进行交叉编译。
+
+#### 奇怪的错误码
+
+对于为什么错误码是1，我们可以先假设一下`check`失败。所以我们可以看一下`check`函数的`native`实现：
+
+```c title="am-kernels/tests/cpu-tests/include/trap.h"
+__attribute__((noinline)) void check(bool cond)
+{
+    if (!cond)
+        halt(1);
+}
+```
+
+这里会调用TRM的halt，参数为1。而`native`里面TRM是这样实现的`halt`：
+
+```c title="$AM_HOME/am/src/native/trm.c"
+void halt(int code)
+{
+    const char *fmt = "Exit code = 40h\n";
+    for (const char *p = fmt; *p; p++)
+    {
+        char ch = *p;
+        if (ch == '0' || ch == '4')
+        {
+            ch = "0123456789abcdef"[(code >> (ch - '0')) & 0xf];
+        }
+        putch(ch);
+    }
+    __am_exit_platform(code);
+    putstr("Should not reach here!\n");
+    while (1)
+        ;
+}
+```
+
+这里有关输出退出码信息到串口上的方式感觉非常炫技，挺有意思。不过更重要的是在`__am_exit_platform`中干了调用了`exit(code)`，因此这个运行在Linux上的`native`程序的退出码是1。
+
+对于make程序如何得到这个错误码，我认为应该是因为make程序作为父进程，可以读它的子进程（运行在`native`上的软件）结束后的PCB所记录的退出码。在这里我用系统调用踪迹证实了这一点。
+
+这是我的检查步骤：
+
+1. 我略微修改了`$AM_HOME/tests/cpu-tests/tests/add.c`，让它一定会`check`失败。
+2. 我把`$AM_HOME/tests/cpu-tests/Makefile`中删除掉了“删除生成的`Makefile.add`的命令”
+3. 利用strace进行追踪，并用nvim看内容。具体而言是`strace -f make -s -f Makefile.add ARCH=native run &| nvim -`这条命令
+
+下面就是strace的输出内容了：
+
+```sh {30-31}
+clone3({flags=CLONE_VM|CLONE_VFORK|CLONE_CLEAR_SIGHAND, exit_signal=SIGCHLD, stack=0x7babf327c000, stack_size=0x9000}, 88strace: Process 342900 attached
+ <unfinished ...>
+[pid 342900] rt_sigprocmask(SIG_BLOCK, NULL, ~[KILL STOP], 8) = 0
+[pid 342900] getuid()                   = 1000
+[pid 342900] setresuid(-1, 1000, -1)    = 0
+[pid 342900] getgid()                   = 1000
+[pid 342900] setresgid(-1, 1000, -1)    = 0
+[pid 342900] rt_sigprocmask(SIG_SETMASK, [], NULL, 8) = 0
+[pid 342900] execve("/home/lijn/ics2024/am-kernels/tests/cpu-tests/build/add-native.elf", ["/home/lijn/ics2024/am-kernels/te"...], 0x5bab3011c4c0 /* 86 vars */ <unfinished ...>
+
+...
+
+[pid 342900] write(1, "E", 1E)           = 1
+[pid 342900] write(1, "x", 1x)           = 1
+[pid 342900] write(1, "i", 1i)           = 1
+[pid 342900] write(1, "t", 1t)           = 1
+[pid 342900] write(1, " ", 1 )           = 1
+[pid 342900] write(1, "c", 1c)           = 1
+[pid 342900] write(1, "o", 1o)           = 1
+[pid 342900] write(1, "d", 1d)           = 1
+[pid 342900] write(1, "e", 1e)           = 1
+[pid 342900] write(1, " ", 1 )           = 1
+[pid 342900] write(1, "=", 1=)           = 1
+[pid 342900] write(1, " ", 1 )           = 1
+[pid 342900] write(1, "0", 10)           = 1
+[pid 342900] write(1, "1", 11)           = 1
+[pid 342900] write(1, "h", 1h)           = 1
+[pid 342900] write(1, "\n", 1)          = 1
+[pid 342900] exit_group(1)              = ?
+[pid 342900] +++ exited with 1 +++
+<... wait4 resumed>[{WIFEXITED(s) && WEXITSTATUS(s) == 1}], 0, NULL) = 342900
+write(2, "make: *** [/home/lijn/ics2024/ab"..., 82make: *** [/home/lijn/ics2024/abstract-machine/scripts/native.mk:21: run] Error 1
+) = 82
+rt_sigprocmask(SIG_BLOCK, [HUP INT QUIT TERM XCPU XFSZ], NULL, 8) = 0
+rt_sigprocmask(SIG_UNBLOCK, [HUP INT QUIT TERM XCPU XFSZ], NULL, 8) = 0
+chdir("/home/lijn/ics2024/am-kernels/tests/cpu-tests") = 0
+close(1)                                = 0
+exit_group(2)                           = ?
++++ exited with 2 +++
+```
+
+显然pid为342900的进程就是跑的测试程序，也就是`add-native.elf`，而make程序用一个wait4系统调用去获取了它所clone3出来的进程的退出信息。由于退出码为1，所以make程序就这样输出出来了。
+
+感觉这个问题有点超纲，我是做了清华大学的rCore-OS进而对操作系统有了更深入的了解之后才能够合理猜测出来的。
