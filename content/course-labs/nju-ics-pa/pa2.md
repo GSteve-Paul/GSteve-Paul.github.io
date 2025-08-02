@@ -1212,6 +1212,8 @@ void halt(int code)
 下面就是strace的输出内容了：
 
 ```sh {30-31}
+...
+
 clone3({flags=CLONE_VM|CLONE_VFORK|CLONE_CLEAR_SIGHAND, exit_signal=SIGCHLD, stack=0x7babf327c000, stack_size=0x9000}, 88strace: Process 342900 attached
  <unfinished ...>
 [pid 342900] rt_sigprocmask(SIG_BLOCK, NULL, ~[KILL STOP], 8) = 0
