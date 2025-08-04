@@ -162,6 +162,8 @@ riscv64-linux-gnu-objdump -M no-aliases -d unalign-riscv32-nemu.elf
 
 ## 阶段2
 
+任务量最重的阶段，没有之一。
+
 ### 程序，运行时环境与AM
 
 #### 这又能怎么样呢
@@ -1257,4 +1259,380 @@ exit_group(2)                           = ?
 
 显然pid为342900的进程就是跑的测试程序，也就是`add-native.elf`，而make程序用一个wait4系统调用去获取了它所clone3出来的进程的退出信息。由于退出码为1，所以make程序就这样输出出来了。
 
-感觉这个问题有点超纲，我是做了清华大学的rCore-OS进而对操作系统有了更深入的了解之后才能够合理猜测出来的。
+感觉这个问题多少有点超纲，我是做了清华大学的rCore-OS进而对操作系统有了更深入的了解之后才能够合理猜测出来的。
+
+#### 这是如何实现的?
+
+注意到`klib`库的一些C源文件中有这么一些东西：
+
+```c title="$AM_HOME/klib/src/stdio.c" 
+#if !defined(__ISA_NATIVE__) || defined(__NATIVE_USE_KLIB__)
+
+...
+
+#endif
+```
+
+这就意味着，如果我们选择`ARCH=native`并且在`klib.h`中没有定义宏`__NATIVE_USE_KLIB__`，那么`stdio.c`里面的各个函数的定义不会被编译，自然，链接的时候是不会链接klib的。
+
+而如果我们选择`ARCH=native`并且在`klib.h`中定义了宏`__NATIVE_USE_KLIB__`，情况就不一样了。这样`stdio.c`里面的各个函数的定义会被编译。
+
+再看看Makefile里是如何链接的：
+
+```make {6} title="$AM_HOME/Makefile" showLineNumbers{125}
+### Rule (link): objects (`*.o`) and libraries (`*.a`) -> `IMAGE.elf`, the final ELF binary to be packed into image (ld)
+$(IMAGE).elf: $(LINKAGE) $(LDSCRIPTS)
+	@echo \# Creating image [$(ARCH)]
+	@echo + LD "->" $(IMAGE_REL).elf
+ifneq ($(filter $(ARCH),native),)
+	$(CXX) -o $@ -Wl,--whole-archive $(LINKAGE) -Wl,-no-whole-archive $(LDFLAGS_CXX)
+else
+	$(LD) $(LDFLAGS) -o $@ --start-group $(LINKAGE) --end-group
+endif
+```
+
+在高亮行中这些库都被显式地静态链接了，所以它们比glibc的优先级更高，因而klib中的函数会被优先链接上去。
+
+之后打算读一读《程序员的自我修养》和《CS:APP》两本书，希望能对编译、链接这一块有更加深入的理解。
+
+#### 编写可移植的程序
+
+用`sizeof`代替固定的指针大小。
+
+#### 编写更多的测试(2)
+
+前面两个选做任务：编写更多的测试 和 这些库函数这么简单, 我可以不测试吗? 没什么好说的，但是我的klib-tests由于没置入git管理所以在误删后现在已经没了。
+
+要得到只读函数的测试的预期输出，完全可以把自己写的测试在host机上先跑出来一个结果，再用`check`去检查。
+
+#### 编写更多的测试(3)
+
+感觉这个才是最重要的，因为格式化输出还真有点难写。同样，预期输出的生成同上。
+
+#### 实现DiffTest
+
+DiffTest的核心就在于每条指令步步执行并用另一个正确的实现来检查程序状态是否一致，这是一种检查硬件实现的好方法。比如上面[[pa2#实现更多的指令|srai指令实现的坑]]就是这样检查出来的。
+
+为了解决这个选做题，那肯定要先找到检查寄存器的位置：
+
+```c {32, 34}title="$NEMU_HOME/src/cpu/difftest/dut.c"
+void difftest_step(vaddr_t pc, vaddr_t npc)
+{
+    CPU_state ref_r;
+
+    if (skip_dut_nr_inst > 0)
+    {
+        ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+        if (ref_r.pc == npc)
+        {
+            skip_dut_nr_inst = 0;
+            checkregs(&ref_r, npc);
+            return;
+        }
+        skip_dut_nr_inst--;
+        if (skip_dut_nr_inst == 0)
+            panic("can not catch up with ref.pc = " FMT_WORD
+                  " at pc = " FMT_WORD,
+                  ref_r.pc, pc);
+        return;
+    }
+
+    if (is_skip_ref)
+    {
+        // to skip the checking of an instruction, just copy the reg state to
+        // reference design
+        ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
+        is_skip_ref = false;
+        return;
+    }
+
+    ref_difftest_exec(1);
+    ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+
+    checkregs(&ref_r, pc);
+}
+```
+
+所以要想办法了解`ref_difftest_regcpy`的实现。看源码（`init_difftest`函数）能够得知这个函数是动态加载进来的，其在动态链接库里的名字是`difftest_regcpy`。
+
+然后通过看`$NEMU_HOME/script/native.mk`、`$NEMU_HOME/tools/difftest.mk`可以知道加载的这个动态链接库是这样的：
+
+```make title="$NEMU_HOME/tools/difftest.mk"
+DIFF_REF_SO = $(DIFF_REF_PATH)/build/$(GUEST_ISA)-$(call remove_quote,$(CONFIG_DIFFTEST_REF_NAME))-so
+```
+
+对于我们的riscv32，默认就是`$NEMU_HOME/tools/spike-diff/build/riscv32-spike-so`。
+
+所以在`$NEMU_HOME/tools/spike-diff`下面找函数`difftest_regcpy`就行了。
+
+```cpp title="$NEMU_HOME/tools/spike-diff/difftest.cc"
+
+...
+
+struct diff_context_t {
+  word_t gpr[MUXDEF(CONFIG_RVE, 16, 32)];
+  word_t pc;
+};
+
+...
+
+static state_t *state = NULL;
+
+...
+
+void sim_t::diff_get_regs(void* diff_context) 
+{
+	struct diff_context_t* ctx = (struct diff_context_t*)diff_context;
+	for (int i = 0; i < NR_GPR; i++) 
+	{
+		ctx->gpr[i] = state->XPR[i];
+	}
+	ctx->pc = state->pc;
+}
+
+...
+
+__EXPORT void difftest_regcpy(void* dut, bool direction) 
+{
+	if (direction == DIFFTEST_TO_REF) 
+	{
+	    s->diff_set_regs(dut);
+	} 
+	else 
+	{
+	    s->diff_get_regs(dut);
+	}
+}
+
+...
+```
+
+然后再看看spike里面的寄存器实现：
+
+```cpp title="$NEMU_HOME/tools/spike-diff/repo/riscv/processor.h"
+struct state_t
+{
+  void reset(processor_t* const proc, reg_t max_isa);
+
+  reg_t pc;
+  regfile_t<reg_t, NXPR, true> XPR;
+  regfile_t<freg_t, NFPR, false> FPR;
+...
+```
+
+```cpp title="$NEMU_HOME/tools/spike-diff/repo/riscv/decode.h"
+template <class T, size_t N, bool zero_reg>
+class regfile_t
+{
+public:
+  void write(size_t i, T value)
+  {
+    if (!zero_reg || i != 0)
+      data[i] = value;
+  }
+  const T& operator [] (size_t i) const
+  {
+    return data[i];
+  }
+...
+```
+
+发现spike里面就是第i个寄存器就对应XPR的第i个`regfile_t`，并且spike的`difftest_context_t`和NEMU的`riscv32_CPU_state`完全一致。~~所以教程里完全在唬人罢了~~
+
+所以我们就这样简单地实现`isa_difftest_checkregs`即可：
+
+```c title="$NEMU_HOME/src/isa/riscv32/difftest/dut.c"
+bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) 
+{
+	size_t reg_num = MUXDEF(CONFIG_RVE, 16, 32);
+	for (size_t i = 0; i < reg_num; i++) 
+	{
+		if (gpr(i) != ref_r->gpr[i])
+			return false;
+	}
+	return true;
+}
+```
+
+#### 匪夷所思的QEMU行为 (有点难度)
+
+以后学学MIPS32后再看看这个问题吧。
+
+#### 捕捉死循环(有点难度)
+
+发生死循环应该是有跳转、分支语句参与其中的，并且这些语句至少有一个是让PC往之前跳的。因此我们需要去分析PC从被跳到前面到这个跳转、分支语句之间的指令会始终让这个跳转、分支语句的判断条件为真，且让PC往之前跳。不过这好像有点困难。
+
+网上查询原来这就是[停机问题](https://en.wikipedia.org/wiki/Halting_problem)，已经证明了是不存在一个方法可以检测所有程序能不能停机的。不过对于特定程序还是可以判定的。
+
+## 阶段3
+
+### 输入输出
+
+教程上说了很多，不过一句话总结就是：输入输出对于RISCV软件开发者还是挺简单的，只需要访问特定的内存地址就可以了；然而硬件工程师考虑的就有很多了。
+
+不过有了输入输出后，软件的状态机模型也变得更加复杂了，在不同的输入面前，程序的状态是不确定的。
+
+#### 理解volatile关键字
+
+[[pa2#了解一下`volatile`关键字|之前]]已经略微理解了一些了呢~在这里我们用教程中给出的示例代码来验证一下：
+
+这是有`-O2`，有`volatile`：
+
+```asm
+0000000000001180 <fun>:
+    1180:	f3 0f 1e fa          	endbr64
+    1184:	c6 05 8d 2e 00 00 00 	movb   $0x0,0x2e8d(%rip)        # 4018 <_end>
+    118b:	48 8d 15 86 2e 00 00 	lea    0x2e86(%rip),%rdx        # 4018 <_end>
+    1192:	66 0f 1f 44 00 00    	nopw   0x0(%rax,%rax,1)
+    1198:	0f b6 02             	movzbl (%rdx),%eax
+    119b:	3c ff                	cmp    $0xff,%al
+    119d:	75 f9                	jne    1198 <fun+0x18>
+    119f:	c6 05 72 2e 00 00 33 	movb   $0x33,0x2e72(%rip)        # 4018 <_end>
+    11a6:	c6 05 6b 2e 00 00 34 	movb   $0x34,0x2e6b(%rip)        # 4018 <_end>
+    11ad:	c6 05 64 2e 00 00 86 	movb   $0x86,0x2e64(%rip)        # 4018 <_end>
+    11b4:	c3                   	ret
+```
+
+这是有`-O2`，没有`volatile`：
+
+```asm
+0000000000001180 <fun>:
+    1180:	f3 0f 1e fa          	endbr64
+    1184:	c6 05 8d 2e 00 00 00 	movb   $0x0,0x2e8d(%rip)        # 4018 <_end>
+    118b:	eb fe                	jmp    118b <fun+0xb>
+```
+
+因为没有`volatile`，所以在给`*p`赋值为0之后的`while`条件判断里读取`*p`直接被优化没了，直接当作死循环处理了。因为C编译器直接假定这个`*p`是不会变的。
+
+所以这个`volatile`关键字在内存映射I/O中非常有用：因为从软件层面上看，我们读取IO设备是用读取内存的方式进行的。我们在读取它的时候从硬件角度来看它可能会变，但是从C编译器的角度上它就不会变，而`volatile`防止了C编译器这样的不合适的优化。
+
+这里有个小问题：`_end`是什么。我们`man 3 end`一下就会知道了：
+
+>   ` end`    This is the first address past the end of the uninitialized data segment (also known as the BSS segment).
+
+随便从一个编译出来的ELF文件中也可以看到，`_end`符号正好就是BSS段的末尾。
+
+#### 通过内存进行数据交互的输入输出
+
+这里的意思是，普通的IO的数据流若是要读到内存中去，那么是必须走这么个流程：IO设备->CPU寄存器->内存，而有了DMA，则可以直接IO设备->内存。
+
+#### 运行Hello World
+
+因为我选择的是riscv32所以很简单，不用实现新的指令。不过最好还是梳理一下如何输出的。我们先看看运行在裸机运行时环境的软件是什么样子的：首先在`hello.c`中调用了`putch`，这个`putch`调用了`outb`，实质上就是在串口设备对应的内存地址写入了一字节的一个字符。而这个事情会被编译器编译成这个东西：
+
+```asm
+8000008c <putch>:
+8000008c:	a00007b7          	lui	a5,0xa0000
+80000090:	3ea78c23          	sb	a0,1016(a5) # a00003f8 <_end+0x1fff73f8>
+80000094:	00008067          	ret
+```
+
+其实就是一个`sb`存字节指令。然后视角转到NEMU，NEMU在执行这一条指令的时候，按照该指令的语义，是肯定要调用`vaddr_write`这个函数的，接着就是调用`paddr_write`，发现这个地址是对应于设备地址的，所以会调用`mmio_write`这个函数，在通过地址找到对应的IOMap后，会触发之前注册好的回调函数，在这里也就是触发`serial_io_handler`。
+
+```c title="$NEMU_HOME/src/device/io/map.c"
+void map_write(paddr_t addr, int len, word_t data, IOMap *map)
+{
+    assert(len >= 1 && len <= 8);
+    check_bound(map, addr);
+    paddr_t offset = addr - map->low;
+    host_write(map->space + offset, len, data);
+    invoke_callback(map->callback, offset, len, true);
+#ifdef CONFIG_DTRACE
+    if (DTRACE_COND)
+    {
+        log_write("%s," FMT_WORD ",%d,w: " FMT_WORD "\n", map->name, addr, len,
+                  data);
+    }
+#endif
+}
+```
+
+```c title="$NEMU_HOME/src/device/serial.c"
+void init_serial()
+{
+    serial_base = new_space(8);
+#ifdef CONFIG_HAS_PORT_IO
+    add_pio_map("serial", CONFIG_SERIAL_PORT, serial_base, 8,
+                serial_io_handler);
+#else
+    add_mmio_map("serial", CONFIG_SERIAL_MMIO, serial_base, 8,
+                 serial_io_handler);
+#endif
+}
+```
+
+#### 理解mainargs
+
+对于`$ISA-nemu`而言，首先应该看看Makefile程序：
+
+```make title="$AM_HOME/scripts/platform/nemu.mk" showLineNumbers{17}
+MAINARGS_MAX_LEN = 64
+MAINARGS_PLACEHOLDER = The insert-arg rule in Makefile will insert mainargs here.
+CFLAGS += -DMAINARGS_MAX_LEN=$(MAINARGS_MAX_LEN) -DMAINARGS_PLACEHOLDER=\""$(MAINARGS_PLACEHOLDER)"\"
+
+insert-arg: image
+	@python $(AM_HOME)/tools/insert-arg.py $(IMAGE).bin $(MAINARGS_MAX_LEN) "$(MAINARGS_PLACEHOLDER)" "$(mainargs)"
+```
+
+这个Makefile程序的CFLAGS里定义的宏在这个C源文件会起作用：
+
+```c title="$AM_HOME/am/src/platform/nemu/trm.c"
+...
+
+static const char mainargs[MAINARGS_MAX_LEN] = MAINARGS_PLACEHOLDER; // defined in CFLAGS
+
+...
+
+void _trm_init() {
+  int ret = main(mainargs);
+  halt(ret);
+}
+```
+
+所以说，在编译的时候会有一个占位的`The insert-arg rule in Makefile will insert mainargs here.`字符串作为`mainargs`，这个`mainargs`未来会被传送到`main`函数的参数中。
+
+然后在NEMU上运行这个程序之前，会在`insert-arg`目标中用一个Python程序去插入真正的`mainargs`，插入的方式也很简单，首先在ELF文件中找到这个占位的字符串，然后用真正的`mainargs`连同后面补位的`\0`去替代之前占位的字符串就好了。这样一来就成功插入了`mainargs`。不过我觉得这样做不是很好，因为有极小的可能性，这个ELF文件里存在另外一块数据，它的二进制表达形式和这个占位的字符串的UTF-8码一样，而且它还在这个占位的字符串前面就会坏事了，可能会导致替换错误。
+
+而对于`native`，似乎很浅显，它把`mainargs`放在环境变量里，然后读取它：
+
+```c title="$AM_HOME/am/src/native/platform.c"
+const char *args = getenv("mainargs");
+halt(main(args ? args : "")); // call main here!
+```
+
+而`mainargs`是怎么被放进环境变量的就很有意思了。我们先追踪一下make过程中的系统调用`execve`的环境变量，即`strace -f -e trace=execve -s 65535 -v make ARCH=native mainargs=114514 run &| nvim -`，发现是第一次递归调用Make之后，才在环境变量中第一次出现了`mainargs`。对应的Make程序就是这个：
+
+```make title="$AM_HOME/Makefile"
+### Rule (recursive make): build a dependent library (am, klib, ...)
+$(LIBS): %:
+	@$(MAKE) -s -C $(AM_HOME)/$* archive
+```
+
+关于为什么递归调用会在环境变量中出现之前的Makefile变量，可以看这篇[文章](https://www.gnu.org/software/make/manual/html_node/Variables_002fRecursion.html)。
+
+会写Makefile的人真是神仙。
+
+#### 实现printf
+
+`printf`和`sprintf`之间唯一的区别就在于，`sprintf`把输出的每一个字符输出到了`dst`所在的内存中，而`printf`把输出的每一个字符输出到了串口所对应的内存地址。因此，只是输出的地方不一样，其他都一样。因此可以把之前的字符串分析部分包装成一个函数，然后用不同的函数指针表示不同的输出即可，就像下面这样。
+
+```c
+static void putchar_to_serial(const char ch, int *tot, char **) {
+	putch(ch);
+	(*tot)++;
+}
+
+static void putchar_to_c_str(const char ch, int *tot, char **out) {
+	*((*out)++) = ch;
+	(*tot)++;
+}
+
+...
+
+static void analyze_fmtch(const char* fmt, size_t *i, int *tot, void (*out_func)(const char, int *, char **), char **out, va_list *args);
+```
+
+#### 运行alu-tests
+
+编译得似乎真的很慢。。。
+
