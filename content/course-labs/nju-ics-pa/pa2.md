@@ -1636,3 +1636,573 @@ static void analyze_fmtch(const char* fmt, size_t *i, int *tot, void (*out_func)
 
 编译得似乎真的很慢。。。
 
+#### 实现IOE
+
+为了实现`AM_TIMER_UPTIME`，可以在开机的时候先从NEMU获取时间，然后在每次想要获取AM系统启动时间的时候用获取的时间减去开机时获取的时间即可。
+
+那么先看一下NEMU中计时器的硬件实现：
+
+```c title="$NEMU_HOME/src/device/timer.c"
+static void rtc_io_handler(uint32_t offset, int len, bool is_write)
+{
+    assert(offset == 0 || offset == 4);
+    if (!is_write && offset == 4)
+    {
+        uint64_t us = get_time();
+        rtc_port_base[0] = (uint32_t)us;
+        rtc_port_base[1] = us >> 32;
+    }
+}
+```
+
+当读取的offset是4的时候，会把获取的微秒数放到`rtc_port_base`数组里，然后会在`map_read`中被读入。所以在我们的驱动程序中，应当先读取offset=4，更新`rtc_port_base`，得到微秒数的高32位，然后读取offset=0，这不会更新`rtc_port_base`，得到微秒数的低32位。最后把它们组合起来，放到`uptime`里面。
+
+这些诸如`AM_TIMER_UPTIME_T`的结构体，在`$AM_HOME/am/include/amdev.h`里面定义的。
+
+所以我是这样实现的：
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/timer.c"
+uint64_t boot_time = 0;
+
+void __am_timer_init()
+{
+    boot_time += inl(RTC_ADDR + 4);
+    boot_time <<= 32;
+    boot_time += inl(RTC_ADDR);
+}
+
+void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime)
+{
+    uptime->us = 0;
+    uptime->us += inl(RTC_ADDR + 4);
+    uptime->us <<= 32;
+    uptime->us += inl(RTC_ADDR);
+    uptime->us -= boot_time;
+}
+```
+
+#### RTFSC尽可能了解一切细节
+
+看一眼`am-kernels/tests/am-tests/src/main.c`就可以，就是`mainargs`传个t就可以，所以就在`am-kernels/tests/am-tests/`执行一下下面这个就可以。
+
+```sh
+make ARCH=riscv32-nemu mainargs=t run
+```
+
+#### 看看NEMU跑多快
+
+执行这行代码进行一个microbench的评测：
+
+```sh
+make ARCH=riscv32-nemu mainargs=ref run
+```
+
+我的机器是AMD Ryzen 7 8745H，在`ARCH=native`下获得分数109109分，在`ARCH=riscv32-nemu`下获得分数510分。
+
+然后试了试coremark评测，我在`ARCH=native`下获得分数116856分，在`ARCH=riscv32-nemu`下获得分数393分。
+
+最后是dhrystone评测，在`ARCH=native`下获得分数80081分，在`ARCH=riscv32-nemu`下获得分数153分。感谢这个dhrystone评测，因为我由此发现了我的`slti`指令的实现有问题。
+
+#### RTFSC了解一切细节
+
+在NEMU硬件实现中，只有读取offset=4才会更新计时器。如果你先读取offset=0，再读取offset=4，那么就会导致一开始读的是计时器的旧时间，而之后读的是计时器的新时间，这就会导致读取的时间有误。
+
+#### NEMU和语言解释器
+
+不是很感兴趣，所以没看。
+
+#### 运行演示程序
+
+首先需要实现一个简单的`malloc`和`free`函数：按照教程里的说法就是，只管申请，别管释放了。这虽然很粗暴，但是确实很有效。在查阅手册后，需要注意`malloc`的返回值需要对齐，原文如下：
+
+> The  malloc(), calloc(), realloc(), and reallocarray() functions return
+   a pointer to the allocated memory, which is suitably  aligned  for  any
+   type  that fits into the requested size or less.  On error, these func‐
+   tions return NULL and set errno.   Attempting  to  allocate  more  than
+   PTRDIFF_MAX bytes is considered an error, as an object that large could
+   cause later pointer subtraction to overflow.
+
+所以我们可以这样实现：
+
+```c title="$AM_HOME/klib/src/stdlib.c"
+void *addr = NULL;
+void *malloc(size_t size)
+{
+    // On native, malloc() will be called during initializaion of C runtime.
+    // Therefore do not call panic() here, else it will yield a dead recursion:
+    //   panic() -> putchar() -> (glibc) -> malloc() -> panic()
+    if (!addr)
+        addr = heap.start;
+    void *ret = addr;
+    if ((uintptr_t)ret % size != 0)
+    {
+        ret -= (uintptr_t)ret % size;
+        ret += size;
+    }
+    uint8_t *new_addr = ret;
+    new_addr += size;
+    addr = new_addr;
+    return ret;
+#if !(defined(__ISA_NATIVE__) && defined(__NATIVE_USE_KLIB__))
+    panic("Not implemented");
+#endif
+    return NULL;
+}
+
+void free(void *ptr)
+{
+}
+```
+
+截取一个[高尔顿钉板](https://en.wikipedia.org/wiki/Galton_board)的运行图示：
+
+![[Screenshot from 2025-08-05 20-29-58.png]]
+
+#### 观看"Bad Apple!!" PV
+
+豪堪！
+
+![[Screenshot from 2025-08-05 20-33-00.png]]
+
+#### 运行红白机模拟器
+
+豪玩！
+
+![[Screenshot from 2025-08-05 20-46-46.png]]
+
+#### native和klib
+
+从Makefile里面可以看到，链接出`native`所需的ELF时，动态链接上了SDL的库。
+
+```make title="$AM_HOME/scripts/native.mk"
+LDFLAGS_CXX = $(addprefix -Wl$(comma), $(LDFLAGS)) -pie -ldl $(shell sdl2-config --libs)
+```
+
+在我这台机器上，这个库对应的文件就是`/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.3000.0`，用`ldd libSDL2-2.0.so.0.3000.0`，看一下，发现有对`libc.so.6`的依赖，这似乎就链接上glibc了。
+
+但这好像是和教程中说的有点不符合，毕竟应该是一个小技巧才对。然后我注意到了这个：
+
+```c title="$AM_HOME/am/src/native/platform.c"
+// save the address of memcpy() in glibc, since it may be linked with klib
+memcpy_libc = dlsym(RTLD_NEXT, "memcpy");
+assert(memcpy_libc != NULL);
+```
+
+`dlsym`就是获取一个符号在动态链接库或者可执行文件里的地址，这没啥好说的。但是`RTLD_NEXT`挺有意思，它的解释如下：
+
+>  Find the next occurrence of the desired symbol in the
+  search order after the current object.  This allows one to
+  provide a wrapper around a function in another shared
+  object, so that, for example, the definition of a function
+  in a preloaded shared object (see **LD_PRELOAD** in [ld.so(8)](https://www.man7.org/linux/man-pages/man8/ld.so.8.html))
+  can find and invoke the "real" function provided in another
+  shared object (or for that matter, the "next" definition of
+  the function in cases where there are multiple layers of
+  preloading).
+
+其中提到：它会去找下一个有这个符号的这个object。在之前阅读的Makefile里可以知道，像am、klib等等都被静态链接进了这个ELF文件，在klib中是有`memcpy`的定义，不过这是当前的object，因此要找下一个object，就会去找glibc中的`memcpy`了。
+
+#### 实现dtrace
+
+非常简单，这里不多做赘述。就在`map_read`和`map_write`里面加点日志操作就行了。
+
+#### 实现IOE(2)
+
+首先还是看一下键盘的硬件实现。在每次执行完一个指令后会更新设备，进而利用SDL库把当前按下或松开的按键放在一个循环队列里。然后每次读入就会从这个循环队列里弹出来一个。
+
+具体在循环队列里存放的元素的信息，则是这样子的：
+
+```c title="$NEMU_HOME/src/device/keyboard.c"
+#define KEYDOWN_MASK 0x8000
+
+void send_key(uint8_t scancode, bool is_keydown)
+{
+    if (nemu_state.state == NEMU_RUNNING && keymap[scancode] != NEMU_KEY_NONE)
+    {
+        uint32_t am_scancode =
+            keymap[scancode] | (is_keydown ? KEYDOWN_MASK : 0);
+        key_enqueue(am_scancode);
+    }
+}
+```
+
+这个`keymap[scancode]`的值通过RTF宏可以知道就是SDL2里面的各个按键的scancode，通过查阅[SDL手册](https://www.freepascal-meets-sdl.net/sdl-2-0-scancode-lookup-table/)，了解到这些scancode最多只占三个16进制位，而`KEYDOWN_MASK`是0x8000，所以一定不会在编码上产生冲突。
+
+所以我们的驱动程序可以这样子编写：
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/input.c"
+void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd)
+{
+    uint32_t data = inl(KBD_ADDR);
+    kbd->keydown = (data & KEYDOWN_MASK);
+    kbd->keycode = (data & (~KEYDOWN_MASK));
+}
+```
+
+#### 如何检测多个键同时被按下?
+
+因为键盘码指明了这个键被是按下还是松开，所以可以在得到按下键的时候把这个键放入集合中，在松开时从集合中去除这个键。那么这样的集合就代表着同时按下的键。
+
+#### 运行红白机模拟器(2)
+
+能玩，就是字符画有点抽象。
+
+#### 神奇的调色板
+
+我猜测是使用了多个调色盘，用不同的调色盘代表颜色的深浅，然后在做渐入渐出效果的时候只是更改了调色盘，而存入到像素中的调色盘的下标并不变化。
+
+#### 实现IOE(3)
+#### 实现IOE(4)
+
+这两个任务我是一块做的。
+
+`AM_GPU_CONFIG`的实现很简单，因为硬件已经完全实现好了，软件上面读取一下`VGACTL_ADDR`就行了。注意的是硬件上要注意`vgactl_port_base[0]`是表示屏幕长宽的只读数据，而`vgactl_port_base[1]`是表示是否立刻同步的只写数据：
+
+```c title="$NEMU_HOME/src/device/vga.c"
+static void vga_ctl_io_handler(uint32_t offset, int len, bool is_write)
+{
+    if (offset == 0)
+    {
+        assert(len == 4);
+        assert(!is_write);
+    }
+    else if (offset == 4)
+    {
+        assert(len == 4);
+        assert(is_write);
+        if (vgactl_port_base[1])
+            vga_update_screen();
+        vgactl_port_base[1] = 0;
+    }
+    else
+    {
+        panic("do not support offset = %d", offset);
+    }
+}
+```
+
+然后是实现`AM_GPU_FBDRAW`。在硬件上其实完成一个同步操作即可，但是软件上面就需要把屏幕当作二维数组把数据填写进去，然后指定是否需要同步：
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/gpu.c"
+void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl)
+{
+    uint32_t *fb = (uint32_t *)(uintptr_t)FB_ADDR;
+    uint32_t *pixels = (uint32_t *)ctl->pixels;
+    for (int j = 0; j < ctl->h; j++)
+    {
+        for (int i = 0; i < ctl->w; i++)
+        {
+            int col = ctl->x + i;
+            int row = ctl->y + j;
+            fb[row * width + col] = pixels[j * ctl->w + i];
+        }
+    }
+    if (ctl->sync)
+    {
+        outl(SYNC_ADDR, 1);
+    }
+}
+```
+
+效果如图：
+
+![[Screenshot from 2025-08-06 15-21-43.png]]
+
+#### 运行演示程序(2)
+
+豪堪。
+
+![[Screenshot from 2025-08-06 15-26-39.png]]
+
+#### 运行红白机模拟器(3)
+
+卡成几秒钟一帧，近乎不能玩😭。毕竟相当于是套了两层虚拟机，性能着实糟糕。
+
+![[Screenshot from 2025-08-06 15-38-15.png]]
+
+#### 实现声卡
+
+这个任务有点困难。首先我们要在NEMU中用SDL2库去实现音频，实现的方式需要STFW，我这里采用的是回调函数实现的。
+
+具体来说，我在`init_sound`里面注册了SDL2的回调函数`sound_callback`，这个回调函数内部会从我的缓冲区中读入音频数据，然后写到SDL2的流里面去。而对于软件写进来的音频数据，我在`audio_buf_io_handler`中维护了缓冲区的数据区间。注意我的实现中缓冲区并非是环形队列。
+
+而音频方面的配置则由`audio_ctl_io_handler`处理，这里的`sbuf_size`和`count`还是很重要的，是用来告诉软件能写入多少音频数据的。
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/audio.c"
+#include <common.h>
+#include <device/map.h>
+#include <SDL2/SDL.h>
+
+enum
+{
+    reg_freq,
+    reg_channels,
+    reg_samples,
+    reg_sbuf_size,
+    reg_init,
+    reg_count,
+    nr_reg
+};
+
+static uint8_t *sbuf = NULL;
+static int buf_l = 0, buf_r = 0;
+static uint32_t *audio_base = NULL;
+
+static int buf_use()
+{
+    return buf_r - buf_l;
+}
+
+int min(int x, int y)
+{
+    return ((x < y) ? x : y);
+}
+
+static void sound_callback(void *userdata, Uint8 *stream, int len)
+{
+    SDL_memset(stream, 0, len);
+    len = min(len, buf_use());
+    SDL_MixAudio(stream, sbuf + buf_l, len, SDL_MIX_MAXVOLUME);
+    buf_l = buf_l + len;
+    if (buf_l == buf_r)
+        buf_l = buf_r = 0;
+}
+
+static SDL_AudioSpec audio_spec = {.format = AUDIO_S16SYS,
+                                   .userdata = NULL,
+                                   .silence = 0,
+                                   .padding = 0,
+                                   .size = CONFIG_SB_SIZE,
+                                   .callback = sound_callback};
+
+static void init_sound()
+{
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_OpenAudio(&audio_spec, NULL);
+    SDL_PauseAudio(0);
+}
+
+static void audio_ctl_io_handler(uint32_t offset, int len, bool is_write)
+{
+    assert(len == 4);
+    switch (offset / 4)
+    {
+    case reg_freq:
+        assert(is_write);
+        audio_spec.freq = audio_base[reg_freq];
+        break;
+    case reg_channels:
+        assert(is_write);
+        audio_spec.channels = audio_base[reg_channels];
+        break;
+    case reg_samples:
+        assert(is_write);
+        audio_spec.samples = audio_base[reg_samples];
+        break;
+    case reg_init:
+        assert(is_write);
+        if (audio_base[reg_init])
+            init_sound();
+        audio_base[reg_init] = 0;
+        break;
+    case reg_sbuf_size:
+        assert(!is_write);
+        break;
+    case reg_count:
+        assert(!is_write);
+        audio_base[reg_count] = buf_r;
+        break;
+    default:
+        panic("do not support offset: %d", offset);
+    }
+}
+
+static void audio_buf_io_handler(uint32_t offset, int len, bool is_write)
+{
+    assert(is_write);
+    buf_r = buf_r + len;
+}
+
+void init_audio()
+{
+    uint32_t space_size = sizeof(uint32_t) * nr_reg;
+    audio_base = (uint32_t *)new_space(space_size);
+    audio_base[reg_sbuf_size] = CONFIG_SB_SIZE;
+    audio_base[reg_init] = 0;
+    audio_base[reg_count] = 0;
+#ifdef CONFIG_HAS_PORT_IO
+    add_pio_map("audio", CONFIG_AUDIO_CTL_PORT, audio_base, space_size,
+                audio_ctl_io_handler);
+#else
+    add_mmio_map("audio", CONFIG_AUDIO_CTL_MMIO, audio_base, space_size,
+                 audio_ctl_io_handler);
+#endif
+
+    sbuf = (uint8_t *)new_space(CONFIG_SB_SIZE);
+    add_mmio_map("audio-sbuf", CONFIG_SB_ADDR, sbuf, CONFIG_SB_SIZE,
+                 audio_buf_io_handler);
+}
+```
+
+下面是软件上的实现，其写入音频数据的方式简要叙述就是：计算需要写入的大小和缓冲区中的空闲大小，然后把不超过缓冲区空闲大小的数据写入，反复如此，便能把所有数据全部写进去。不过这可能会有一些并发问题。
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/audio.c"
+#include <am.h>
+#include <nemu.h>
+
+#define AUDIO_FREQ_ADDR (AUDIO_ADDR + 0x00)
+#define AUDIO_CHANNELS_ADDR (AUDIO_ADDR + 0x04)
+#define AUDIO_SAMPLES_ADDR (AUDIO_ADDR + 0x08)
+#define AUDIO_SBUF_SIZE_ADDR (AUDIO_ADDR + 0x0c)
+#define AUDIO_INIT_ADDR (AUDIO_ADDR + 0x10)
+#define AUDIO_COUNT_ADDR (AUDIO_ADDR + 0x14)
+
+size_t bufsize;
+
+void __am_audio_init()
+{
+    bufsize = inl(AUDIO_SBUF_SIZE_ADDR);
+}
+
+void __am_audio_config(AM_AUDIO_CONFIG_T *cfg)
+{
+    cfg->present = true;
+    cfg->bufsize = inl(AUDIO_SBUF_SIZE_ADDR);
+}
+
+void __am_audio_ctrl(AM_AUDIO_CTRL_T *ctrl)
+{
+    outl(AUDIO_FREQ_ADDR, ctrl->freq);
+    outl(AUDIO_CHANNELS_ADDR, ctrl->channels);
+    outl(AUDIO_SAMPLES_ADDR, ctrl->samples);
+    outl(AUDIO_INIT_ADDR, 1);
+}
+
+void __am_audio_status(AM_AUDIO_STATUS_T *stat)
+{
+    stat->count = inl(AUDIO_COUNT_ADDR);
+}
+
+void __am_audio_play(AM_AUDIO_PLAY_T *ctl)
+{
+    AM_AUDIO_STATUS_T stt;
+    __am_audio_status(&stt);
+    uint8_t *dst = (uint8_t *)(uintptr_t)AUDIO_SBUF_ADDR + stt.count;
+    uint8_t *dst_end = (uint8_t *)(uintptr_t)AUDIO_SBUF_ADDR + bufsize;
+    uint8_t *src_beg = (uint8_t *)ctl->buf.start;
+    uint8_t *src_end = (uint8_t *)ctl->buf.end;
+    size_t need = src_end - src_beg;
+    size_t provide = bufsize - stt.count;
+    while (need > provide)
+    {
+        while (dst != dst_end)
+        {
+            *(dst++) = *(src_beg++);
+        }
+        __am_audio_status(&stt);
+        dst = (uint8_t *)(uintptr_t)AUDIO_SBUF_ADDR + stt.count;
+        provide = bufsize - stt.count;
+        need = src_end - src_beg;
+    }
+    while (src_beg != src_end)
+    {
+        *(dst++) = *(src_beg++);
+    }
+}
+```
+
+#### 音频播放的原理
+
+经过试验发现：
+
+- `channels`调得越大播放得更快，声音更尖锐。
+- `freq`调得越大也是播放得更快，声音更尖锐。
+- `samples`没听出来有什么区别
+
+#### 播放自己的音乐
+
+之后自己再试试。
+
+#### 观看"Bad Apple!!" PV(2)
+
+声音比较正常，虽然有点杂音。
+
+#### 消除播放音频时的杂音
+
+这个之后再做吧。
+
+#### 运行红白机模拟器(4)
+
+真的好卡啊。
+
+#### 展示你的计算机系统
+
+这是`slider`程序的截图
+![[Pasted image 20250806184125.png]]
+#### 游戏是如何运行的
+
+从静态视角而言，游戏会在这里访问键盘设备进而得到输入，并检测从代码逻辑上是否命中。这个`io_read`本质上是访问一个设备寄存器，进而调用我之前实现的键盘设备驱动，进而访问特定的内存地址。然后这会被编译成一个读内存的指令。在NEMU上运行时遇到这个指令将会进行一个访存，然后发现地址对应着的是键盘设备，于是调用了键盘设备的回调函数，得到了具体的键盘事件。
+
+```c {10}
+while (1)
+{
+	AM_INPUT_KEYBRD_T ev = io_read(AM_INPUT_KEYBRD);
+	if (ev.keycode == AM_KEY_NONE)
+		break;
+	if (ev.keydown && ev.keycode == AM_KEY_ESCAPE)
+		halt(0);
+	if (ev.keydown && lut[ev.keycode])
+	{
+		check_hit(lut[ev.keycode]);
+	}
+};
+```
+
+这里就会更新`chars`数组的数据，然后在下面的`render`函数中就会访问VGA设备把具体的画面输出出去。
+
+不过从动态视角，比如dtrace，就会发现游戏中大部分时间都在空转，也就是读的键盘输入是没有，并且由于计算速度较快，而帧数并不高（30帧），往往`game_logic_update`并不是经常被调用，而ftrace也可以印证这一点。
+
+需要注意的是，要在Kconfig中把When tracing is disabled (unit: number of instructions)设置成一个较大的值，不然trace会提前结束。
+
+#### 体会到AM的好处了吧?
+
+以后再说，我并不是南京大学的学生😭，现在不是，以后估计也不会是。
+
+#### LiteNES如何工作?
+#### 优化LiteNES
+
+关于LiteNES的内容，以后再说吧。
+
+#### 在NEMU上运行NEMU
+
+这实际上有点复杂，因为如果把NEMU当作一个运行在NEMU上的程序，那它所处于的环境就是AM的裸机运行时环境，因此还需要添加一些库函数等等才可以成功运行。
+
+我这里并没有成功让NEMU运行在NEMU上，不过我尝试着RTFSC解决这个问题，以读取按键举个例子，访问过程如下：typing-game调用`io_read`->访问内层NEMU的AM的IOE驱动->通过访存指令访问内层的NEMU的硬件实现（由于内层NEMU是跑在外层NEMU的AM上的，所以这个硬件实现调用的是`io_read`）->外层NEMU的AM的IOE驱动->通过访存指令访问外层NEMU的硬件实现（利用SDL2库实现）-> 本机的Linux环境
+
+## 实验报告
+
+#### 编译与链接1
+
+经过实验，分别去掉`static`、`inline`都可以编译成功，而都去掉后不会编译成功。
+
+都去掉后编译失败的原因是，这个函数所在的`cpu/ifetch.h`被`hostcall.c`和`inst.c`include了，被编译后在`hostcall.o`和`inst.o`里的`inst_fetch`都是强符号，因此会导致符号重复定义，使得链接失败。
+
+而单独留下`static`的时候，编译出来的`hostcall.o`和`inst.o`里的`inst_fetch`在符号表中会看到，其Bind属性为LOCAL，是不会发生冲突的。
+
+单独留下`inline`的时候，编译出来的`hostcall.o`和`inst.o`里根本不存在`inst_fetch`这个符号，甚至连函数都没有，因为它被优化得插入到被“调用”的地方了，所以也不会造成冲突。实际上根据C99手册中所说，`inline`并不一定inline，但是这样的一个inline definition一定不会提供一个external definition，这就确保了不会造成多重定义。
+
+两者都存在的时候，偏向于了inline，也就是在符号表里看不到了，不会出错的原因也同理。
+
+#### 编译与链接2
+
+可以让gcc输出预处理后的结果，然后在预处理的文件里计`volatile static int dummy;`的数量就可以了。先可以照[[pa2#我要被宏定义绕晕了, 怎么办?|上面的方法]]改改Makefile，然后构建预处理的结果，进而用下面的命令得出数量。
+
+```sh 
+find . -type f | xargs cat | grep "volatile static int dummy;" | wc -l
+```
+
+这样得出数量是35个。
+
+在`debug.h`中添加了`volatile static int dummy;`后，查询到的数量来到了70个，但是实际上还是35个。原因是`debug.h`中包含了`common.h`，`common.h`中包含了`debug.h`，并且它们都用了宏机制防止二次包含，这就导致这些`dummy`会成对出现，不过实际上变量实体个数没变，原因在下面。
+
+在添加了` = 0`之后，会导致重复定义的问题。而之前没有出现这样的重复定义的问题靠的是[这个特性](https://en.cppreference.com/w/c/language/extern.html)，具体分析就是，之前的两个定义因为没有初始化，所以都是tentative definition，实际上就是这个dummy被empty-initializes了，实际上只有一个它。而其中一个初始化之后，被初始化的那个是一个正常的definition，而没被初始化的那个是tentative definition。两个都被初始化，那就没一个是tentative definition，就导致了重复定义。
