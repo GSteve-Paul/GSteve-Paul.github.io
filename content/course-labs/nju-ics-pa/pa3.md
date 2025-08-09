@@ -740,3 +740,564 @@ hello程序调用`printf`->OS上的libc->系统调用`write()`->指令`ecall`，
 ## 阶段3
 
 ### 文件系统
+
+文件本质上就是字节序列。我们的文件系统就是为了管理文件到ramdisk中的位置的映射并为上层用户程序提供文件操作的接口。
+
+不过这里的文件是抽象的，并不一定每个文件都有“名字”，所以用文件描述符表示一个正在打开的文件，让OS来维护文件描述符到具体文件的映射。
+
+#### 文件偏移量和用户程序
+
+如果偏移量放在了文件记录表中， 那么对于每一个进程而言它们所对应的文件系统的状态就是一样的。这就意味着无法让两个进程并发地读同一个文件，因为显然这需要这个文件为不同的进程提供不同的偏移量。
+
+#### 让loader使用文件
+
+现在引入了好几个系统调用，其中`lseek`其实有点说法。因为`lseek`可以直接指定一个文件的`offset`，这就意味着它所操作的文件（字节序列）一定要有“位置”的概念。像磁盘（块设备）中的文件就是有位置的概念的，它可以被`lseek`；但是像键盘（字符设备）输入、串口（字符设备）输出就是没有的，不能被`lseek`。因此需要在`FInfo`结构体里添加一个字段表示这个文件是在块设备上还是字符设备上。
+
+```c title="nanos-lite/include/fs.h"
+typedef size_t (*ReadFn) (void *buf, size_t offset, size_t len);
+typedef size_t (*WriteFn) (const void *buf, size_t offset, size_t len);
+
+typedef struct
+{
+    char *name;
+    size_t size;
+    size_t disk_offset;
+    size_t open_offset;
+    int not_support_lseek;
+    ReadFn read;
+    WriteFn write;
+} Finfo;
+```
+
+```c title="nanos-lite/src/fs.c"
+Finfo file_table[] __attribute__((used)) = {
+    [FD_STDIN] = {"stdin", 0, 0, 0, 1, invalid_read, invalid_write},
+    [FD_STDOUT] = {"stdout", 0, 0, 0, 1, invalid_read, serial_write},
+    [FD_STDERR] = {"stderr", 0, 0, 0, 1, invalid_read, serial_write},
+#include "files.h"
+};
+
+int fs_open(const char *pathname, int flags, int mode)
+{
+    size_t file_cnt = sizeof(file_table) / sizeof(Finfo);
+    for (int i = 0; i < file_cnt; i++)
+    {
+        if (strcmp(file_table[i].name, pathname) == 0)
+        {
+            file_table[i].open_offset = 0;
+            return i;
+        }
+    }
+    panic("Invalid pathname: %s\n", pathname);
+}
+
+size_t fs_read(int fd, void *buf, size_t len)
+{
+    Finfo *fi = file_table + fd;
+    ReadFn read_fn = fi->read;
+    if (!read_fn)
+        read_fn = &ramdisk_read;
+
+    if (!fi->not_support_lseek)
+        len = min(len, fi->size - fi->open_offset);
+    size_t ret = read_fn(buf, fi->disk_offset + fi->open_offset, len);
+    if (!fi->not_support_lseek)
+        fi->open_offset += ret;
+    return ret;
+}
+
+size_t fs_lseek(int fd, size_t offset, int whence)
+{
+    size_t *fi_open_offset = &(file_table[fd].open_offset);
+    switch (whence)
+    {
+    case SEEK_SET:
+        *fi_open_offset = offset;
+        break;
+    case SEEK_CUR:
+        *fi_open_offset += offset;
+        break;
+    case SEEK_END:
+        *fi_open_offset = file_table[fd].size + offset;
+        break;
+    default:
+        panic("Undefined whence = %d\n", whence);
+    }
+    return *fi_open_offset;
+}
+
+int fs_close(int fd)
+{
+    return 0;
+}
+```
+
+在此之后，我们就可以利用FS提供的接口去读取文件了，进而在加载程序这里也用上FS的接口。
+
+```c title="nanos-list/src/loader.c"
+static uintptr_t loader(PCB *pcb, const char *filename)
+{
+#if defined(__ISA_AM_NATIVE__)
+#define EXPECT_TYPE EM_X86_64
+#elif defined(__ISA_RISCV32__)
+#define EXPECT_TYPE EM_RISCV
+#else
+#error Unsupported ISA
+#endif
+    int fd = fs_open(filename, 0, 0);
+    Elf_Ehdr ehdr;
+    fs_read(fd, &ehdr, sizeof(Elf_Ehdr));
+    assert(ehdr.e_ident[EI_MAG0] == ELFMAG0);
+    assert(ehdr.e_ident[EI_MAG1] == ELFMAG1);
+    assert(ehdr.e_ident[EI_MAG2] == ELFMAG2);
+    assert(ehdr.e_machine == EXPECT_TYPE);
+
+    size_t phdr_num = ehdr.e_phnum;
+    Elf_Phdr phdr;
+    for (size_t i = 0; i < phdr_num; i++)
+    {
+        fs_lseek(fd, ehdr.e_phoff + i * sizeof(Elf_Phdr), SEEK_SET);
+        fs_read(fd, &phdr, sizeof(Elf_Phdr));
+        if (phdr.p_type != PT_LOAD)
+            continue;
+        void *mem = (void *)(uintptr_t)phdr.p_vaddr;
+        fs_lseek(fd, phdr.p_offset, SEEK_SET);
+        fs_read(fd, mem, phdr.p_filesz);
+        mem += phdr.p_filesz;
+        memset(mem, 0, phdr.p_memsz - phdr.p_filesz);
+    }
+    fs_close(fd);
+    return (uintptr_t)ehdr.e_entry;
+}
+```
+
+#### 实现完整的文件系统
+
+其实上面我们已经实现了`fs_lseek`了，而事实上`fs_write`和`fs_read`的实现很类似，这里就不多做赘述。当然，还需要实现一下串口写的函数`serial_write`，不过这很简单。
+
+最后，因为要让用户程序能用到我们新添加的FS，我们应该在系统调用处更新一下接口：
+
+```c title="nanos-lite/src/syscall.c"
+static int sys_write(Context *c, uintptr_t *a)
+{
+    int fd = a[1];
+    uint8_t *buf = (void *)a[2];
+    size_t count = a[3];
+#ifdef CONFIG_STRACE
+    extern Finfo file_table[];
+    printf("%s %p %u\n", file_table[fd].name, buf, count);
+#endif
+    return fs_write(fd, buf, count);
+}
+
+static size_t sys_read(Context *c, uintptr_t *a)
+{
+    int fd = a[1];
+    uint8_t *buf = (void *)a[2];
+    size_t count = a[3];
+#ifdef CONFIG_STRACE
+    extern Finfo file_table[];
+    printf("%s %p %u\n", file_table[fd].name, buf, count);
+#endif
+    return fs_read(fd, buf, count);
+}
+
+static size_t sys_lseek(Context *c, uintptr_t *a)
+{
+    int fd = a[1];
+    size_t offset = a[2];
+    int whence = a[3];
+#ifdef CONFIG_STRACE
+    extern Finfo file_table[];
+    printf("%s %u %d\n", file_table[fd].name, offset, whence);
+#endif
+    return fs_lseek(fd, offset, whence);
+}
+
+static int sys_open(Context *c, uintptr_t *a)
+{
+    const char *pathname = (void *)a[1];
+    int flags = a[2];
+    int mode = a[3];
+#ifdef CONFIG_STRACE
+    printf("%s %d %d\n", pathname, flags, mode);
+#endif
+    return fs_open(pathname, flags, mode);
+}
+
+static int sys_close(Context *c, uintptr_t *a)
+{
+    int fd = a[1];
+#ifdef CONFIG_STRACE
+    extern Finfo file_table[];
+    printf("%s\n", file_table[fd].name);
+#endif
+    return fs_close(fd);
+}
+```
+
+这样我们的`file-test`就可以轻松通过了。
+
+#### 支持sfs的strace
+
+上面系统调用的实现中被`#ifdef`和`#endif`围起来的部分就是干这个事情的。
+
+#### 用C语言模拟面向对象编程
+
+之后再看看。
+
+#### 把串口抽象成文件
+
+之前实现时已经考虑到VFS的抽象了，所以这一点已经提前实现了。
+
+#### 实现gettimeofday
+
+本题难点在于读手册：
+
+> If  either  tv or tz is NULL, the corresponding structure is not set or
+   returned.  (However, compilation warnings will result if tv is NULL.)
+>
+ >The use of the timezone structure is obsolete; the tz  argument  should
+   normally be specified as NULL.  (See NOTES below.)
+
+意思差不多就是说，`tz`这个参数没啥用，一般传个`NULL`就得了。
+
+对于`timeval`的定义，`man 3 timeradd`里有写，就是
+
+```c
+struct timeval {
+   time_t      tv_sec;     /* seconds */
+   suseconds_t tv_usec;    /* microseconds */
+};
+```
+
+这俩类型其实都是`long`。
+
+已知我们AM上的`__am_timer_uptime`会给出微秒数，根据简单的单位换算的数学知识，就能很快得到下面的代码了：
+
+```c title="nanos-lite/src/syscall.c"
+static int sys_gettimeofday(Context *c, uintptr_t *a)
+{
+    struct timeval *tv = (void *)a[1];
+    struct timezone *tz __attribute__((unused)) = (void *)a[2];
+#ifdef CONFIG_STRACE
+    printf("%p %p\n", tv, tz);
+#endif
+    uint64_t us = io_read(AM_TIMER_UPTIME).us;
+    tv->tv_usec = us % 1000000;
+    tv->tv_sec = us / 1000000;
+    return 0;
+}
+```
+
+测试程序每半秒钟就会输出一句话，证明我们的实现是正确的。
+
+#### 实现NDL的时钟
+
+实现策略可以仿照原先的time-test，只是单位从半秒变成了毫秒而已：
+
+```c title="$NAVY_HOME/libs/libndl/NDL.c"
+uint32_t NDL_GetTicks()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint32_t ret = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return ret;
+}
+```
+
+然后这是修改后的time-test：
+
+```c title="$NAVY_HOME/tests/timer-test/main.c"
+#include <stdio.h>
+#include <NDL.h>
+
+int main()
+{
+    NDL_Init(0);
+    int half_sec = 1;
+    while (1)
+    {
+        while (1)
+        {
+            uint32_t res = NDL_GetTicks();
+            res /= 500;
+            if (res >= half_sec)
+                break;
+        }
+        printf("%d half-seconds\n", half_sec);
+        half_sec++;
+    }
+    NDL_Quit();
+    return 0;
+}
+```
+
+#### 把按键输入抽象成文件
+
+首先实现一下`events_read()`，需要注意的是，虽然假设一次最多只会读出一个事件，但是也会有可能读出来半个事件，这时候我们就需要做一些特殊处理：
+
+```c title="nanos-lite/src/device.c"
+static char event_buf[300] = {0};
+size_t events_read(void *buf, size_t offset, size_t len)
+{
+    size_t event_buf_len = strlen(event_buf);
+    if (event_buf_len == 0)
+    {
+        AM_INPUT_KEYBRD_T keybrd = io_read(AM_INPUT_KEYBRD);
+        if (keybrd.keycode == AM_KEY_NONE)
+            return 0;
+        sprintf(event_buf, "k%c %s\n", keybrd.keydown ? 'd' : 'u',
+                keyname[keybrd.keycode]);
+    }
+    event_buf_len = strlen(event_buf);
+    size_t ret = (event_buf_len < len ? event_buf_len : len);
+    memcpy(buf, event_buf, ret);
+    memmove(event_buf, event_buf + ret, event_buf_len - ret + 1);
+    return ret;
+}
+```
+
+也就是只有读了完整事件的时候才会重新从键盘设备获取新按的键，然后把事件字符串写到`buf`里，否则就只把`len`限制的部分写过去，留下剩下的残缺的事件字符串，等下次再读。
+
+由于用户程序要读取键盘事件得靠VFS，所以得在文件目录中注册`/dev/events`：
+
+```c
+[FD_EVENT] = {"/dev/events", 0, 0, 0, 1, events_read, invalid_write},
+```
+
+最后是在用户程序那边的NDL库中包装一下获取键盘事件的过程：
+
+```c title="$NAVY_HOME/libs/libndl/NDL.c"
+int NDL_PollEvent(char *buf, int len)
+{
+    int fd = open("/dev/events", O_RDONLY);
+    int ok = read(fd, buf, len);
+    buf[ok] = '\0';
+    close(fd);
+    return ok != 0;
+}
+```
+
+跑测试的时候会发现打印一个事件的字符串后会跟上一个空行。原因是事件本身有一个`\n`，然后event-test程序里又有一个`\n`。
+
+#### 用fopen()还是open()?
+
+当然是用`open()`，因为[[pa3#printf和换行|上面]]提到经过库包装后的可能会有缓冲区等等东西。我们在这里并不希望它会有缓冲。
+
+#### 在NDL中获取屏幕大小
+
+根据README.md中所说，应该这样实现`dispinfo_read()`：
+
+```c
+int screen_width, screen_height;
+size_t dispinfo_read(void *buf, size_t offset, size_t len)
+{
+    char info_buf[100];
+    size_t sz =
+        sprintf(info_buf, "WIDTH:%d\nHEIGHT:%d\n", screen_width, screen_height);
+    size_t ret = (sz < len ? sz : len);
+    memcpy(buf, info_buf, ret);
+    return ret;
+}
+
+void init_device()
+{
+    Log("Initializing devices...");
+    ioe_init();
+    AM_GPU_CONFIG_T conf = io_read(AM_GPU_CONFIG);
+    screen_width = conf.width;
+    screen_height = conf.height;
+}
+```
+
+为了能让用户程序从系统调用来访问VFS，应该添加文件目录：
+
+```c
+[FD_FBINFO] = {"/proc/dispinfo", 0, 0, 0, 1, dispinfo_read, invalid_write},
+```
+
+在navy-app这边，则需要简单实现一下NDL库里的内容。我在`NDL_init()`的时候调用了`read_dispinfo`函数得到屏幕的长宽信息，然后才好实现`NDL_OpenCanvas`。
+
+```c title="$NAVY_HOME/libs/libndl/NDL.c"
+static int screen_w = 0, screen_h = 0;
+static int canvas_w = 0, canvas_h = 0;
+
+void NDL_OpenCanvas(int *w, int *h)
+{
+    if (getenv("NWM_APP"))
+    {
+        int fbctl = 4;
+        fbdev = 5;
+        screen_w = *w;
+        screen_h = *h;
+        char buf[64];
+        int len = sprintf(buf, "%d %d", screen_w, screen_h);
+        // let NWM resize the window and create the frame buffer
+        write(fbctl, buf, len);
+        while (1)
+        {
+            // 3 = evtdev
+            int nread = read(3, buf, sizeof(buf) - 1);
+            if (nread <= 0)
+                continue;
+            buf[nread] = '\0';
+            if (strcmp(buf, "mmap ok") == 0)
+                break;
+        }
+        close(fbctl);
+    }
+    if (*w == 0 && *h == 0)
+    {
+        *w = canvas_w = screen_w;
+        *h = canvas_h = screen_h;
+        return;
+    }
+    canvas_w = *w;
+    canvas_h = *h;
+}
+
+static void read_dispinfo()
+{
+    int fd = open("/proc/dispinfo", O_RDONLY);
+    char key[2][50], value[2][50];
+    char buf[200] = {0};
+    read(fd, buf, sizeof(buf));
+    int ptr = 0;
+    for (int i = 0; i < 2; i++)
+    {
+        int mid = ptr;
+        while (buf[mid] != ':')
+            mid++;
+        strncpy(key[i], buf + ptr, mid - ptr);
+        key[i][mid - ptr] = '\0';
+        while (buf[ptr] != '\n')
+            ptr++;
+        strncpy(value[i], buf + mid + 1, ptr - mid - 1);
+        value[i][ptr - mid - 1] = '\0';
+        ptr++;
+    }
+    for (int i = 0; i < 2; i++)
+    {
+        char *k = key[i];
+        char *v = value[i];
+        if (strcmp(k, "WIDTH") == 0)
+            sscanf(v, "%d", &screen_w);
+        else if (strcmp(k, "HEIGHT") == 0)
+            sscanf(v, "%d", &screen_h);
+        else
+            assert(0);
+    }
+}
+
+int NDL_Init(uint32_t flags)
+{
+    if (getenv("NWM_APP"))
+    {
+        evtdev = 3;
+    }
+    read_dispinfo();
+    return 0;
+}
+```
+
+#### 把VGA显存抽象成文件
+
+教程中说的很详细了，首先初始化`/dev/fb`的大小：
+
+```c title="nanos-lite/src/fs.c"
+void init_fs()
+{
+    // TODO: initialize the size of /dev/fb
+    AM_GPU_CONFIG_T conf = io_read(AM_GPU_CONFIG);
+    file_table[FD_FB].size = conf.vmemsz;
+}
+```
+
+然后是实现`fb_write()`，这需要一点点小技巧。在AM的IOE里面给的接口是在屏幕上的一个矩形区域内填色，而这里只能连着填色。我们可以考虑成这两种情况：
+1. 连着填只有一行：1个`io_write`就行了，因为一行本身就是一个矩形。
+2. 连着多行：可能需要3个`io_write`，第1个`io_write`处理第1行（可能没填满），第2个`io_write`处理第2到倒数第2行（这些是全满的行，所以是一个大矩形），第3个`io_write`处理最后1行即可。
+
+要记住在OS里的坐标都是屏幕坐标！
+
+代码实现如下：
+
+```c title="nanos-lite/src/device.c"
+size_t fb_write(const void *buf, size_t offset, size_t len)
+{
+    assert(len % 4 == 0);
+    assert(offset % 4 == 0);
+    offset /= 4;
+    len /= 4;
+    int y = offset / screen_width;
+    int x = offset % screen_width;
+    int yy = (offset + len) / screen_width;
+    int xx = (offset + len) % screen_width;
+    size_t buf_off = 0;
+
+    if (yy > y)
+    {
+        io_write(AM_GPU_FBDRAW, x, y, (void *)buf, screen_width - x, 1, false);
+        buf_off += screen_width - x;
+        io_write(AM_GPU_FBDRAW, 0, y + 1, (void *)buf + buf_off, screen_width,
+                 yy - y - 1, false);
+        buf_off += screen_width * (yy - y - 1);
+        io_write(AM_GPU_FBDRAW, 0, yy, (void *)buf + buf_off, xx, 1, true);
+    }
+    else
+    {
+        io_write(AM_GPU_FBDRAW, x, y, (void *)buf, xx - x + 1, 1, true);
+    }
+    return len;
+}
+```
+
+然后是在navy-app中实现NDL库。这里的画布是由用户程序通过`NDL_OpenCancas`创建的，它本身其实就是抽象给用户程序来绘图的，用户程序绘图到画布上的接口就是`NDL_DrawRect`。而画布究竟在屏幕的哪里完全取决于NDL库的实现。所以我做了一个函数`canvas2screen`表示画布的坐标所线性映射到的屏幕的坐标，然后在`NDL_DrawRect`中先把画布坐标转化为屏幕坐标，然后再调用系统调用去画。
+
+```c title="$NAVY_HOME/libs/libndl/NDL.c"
+static void canvas2screen(int cx, int cy, int *sx, int *sy)
+{
+    *sx = cx;
+    *sy = cy;
+}
+
+void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
+{
+    int sx, sy;
+    canvas2screen(x, y, &sx, &sy);
+    int fd = open("/dev/fb", 0);
+    for (int i = sy; i < sy + h; i++)
+    {
+        int offset = i * screen_w + sx;
+        offset = offset * 4;
+        lseek(fd, offset, SEEK_SET);
+        int len = w * 4;
+        write(fd, pixels, len);
+        pixels += w;
+    }
+    close(fd);
+}
+```
+
+看上述代码就知道，我目前是把画布就当作屏幕的，所以画的东西会出现在屏幕的左上角。
+
+测试程序如下：
+
+![[Screenshot from 2025-08-10 01-41-32.png]]
+
+#### 实现居中的画布
+
+这其实就是换了一下坐标。具体实现上就是改一下`canvas2screen`就可以：
+
+```c title="$NAVY_HOME/libs/libndl/NDL.c"
+static void canvas2screen(int cx, int cy, int *sx, int *sy)
+{
+    *sx = cx + (screen_w - canvas_w) / 2;
+    *sy = cy + (screen_h - canvas_h) / 2;
+}
+```
+
+![[Pasted image 20250810014353.png]]
+
+### 精彩纷呈的应用程序
+
