@@ -1301,3 +1301,169 @@ static void canvas2screen(int cx, int cy, int *sx, int *sy)
 
 ### 精彩纷呈的应用程序
 
+#### 比较fixedpt和float
+
+float的小数点是浮动的，这意味着它可以表示更加通过调整幂次等方法表示特别小或者特别大的数字，而用`fixedpt`只能保证精细度恒定在$2^{-8}$，无法表示特别小或者特别大的数字。
+
+#### 神奇的fixedpt_rconst
+
+注意到我们编译C源文件时采用的`CFLAGS`：
+
+```make title="$NAVY_HOME/scripts/riscv32.mk"
+CFLAGS += -march=rv32g -mabi=ilp32  #overwrite
+```
+
+ABI被设为ilp32，意味着只有整数，没有硬件上的浮点运算。阅读了RISC-V的手册后也会知道，ELF文件里的文件头的`e_flags`字段就会保存一些关于ABI的信息：例如ilp32对应的`EF_RISCV_FLOAT_ABI_SOFT`就是0，而在navy-apps里面以`make ISA=riscv32`编译出来的ELF也能发现其ELF头里的`e_flags`为0。
+
+像这样的`EF_RISCV_FLOAT_ABI_SOFT`的软浮点，编译器就会用通用寄存器去模拟浮点过程，只是效率会很慢。
+
+#### 实现更多的fixedptc API
+
+对于一个`fixedpt`数a与一个整数B相乘，得到结果C可以用这样子的数学语言表达：
+
+$$
+A = a \cdot 2^{8}
+$$
+$$
+C = c \cdot 2^8 = a \cdot B \cdot 2^8 = A \cdot B
+$$
+
+按照这个思路就可以实现这些函数了：
+
+```c title="$NAVY_HOME/libs/libfixedptc/include/fixedptc.h"
+/* Multiplies a fixedpt number with an integer, returns the result. */
+static inline fixedpt fixedpt_muli(fixedpt A, int B)
+{
+	return A * B;
+}
+
+/* Divides a fixedpt number with an integer, returns the result. */
+static inline fixedpt fixedpt_divi(fixedpt A, int B)
+{
+	return A / B;
+}
+
+/* Multiplies two fixedpt numbers, returns the result. */
+static inline fixedpt fixedpt_mul(fixedpt A, fixedpt B)
+{
+	return (A * B) >> 8;
+}
+
+/* Divides two fixedpt numbers, returns the result. */
+static inline fixedpt fixedpt_div(fixedpt A, fixedpt B)
+{
+	return (A / B) << 8;
+}
+```
+
+由于定义里设定`a`的表示`A`的相反数就直接是补码相反数，所以`fixedpt_abs`也很简单：
+
+```c title="$NAVY_HOME/libs/libfixedptc/include/fixedptc.h"
+static inline fixedpt fixedpt_abs(fixedpt A)
+{
+	if (A >= 0)
+		return A;
+	else
+		return -A;
+}
+```
+
+注意`floor(x)`的定义是小于等于`x`的最大的整数。多亏了补码机制，直接将小数位清空即可。
+
+```c title="$NAVY_HOME/libs/libfixedptc/include/fixedptc.h"
+static inline fixedpt fixedpt_floor(fixedpt A)
+{
+	int mask = -256;
+	return A & mask;
+}
+```
+
+而`ceil(x)`的定义是大于等于`x`的最小的整数。由此需要先判一下小数部分有没有数，没有就是这个数本身，有就加个1再清空小数部分。
+
+```c title="$NAVY_HOME/libs/libfixedptc/include/fixedptc.h"
+static inline fixedpt fixedpt_ceil(fixedpt A)
+{
+	int mask = 255;
+	if (A & mask)
+		A += (1 << 8);
+	int mask2 = -256;
+	return A & mask2;
+}
+```
+
+#### 如何将浮点变量转换成fixedpt类型?
+
+虽然这个计算机没有浮点指令，但是我们可以用编译器从软件的角度解析浮点数。首先根据IEEE 754的原则，浮点数是$(-1)^s \times M \times 2^E$ ，设`f`是小数字段的值，`e`是阶码部分的值。`f`，`e`和`s`都可以直接从内存中读出。这里的`s`目前并不重要，所以先当作没有。
+
+对于规格化的值，根据定义实际上浮点数的值是$(1 + f \times 2^{-23}) \times 2^{e - 127}$，对应到定点数可以表示成这样：
+$$(1 + f \times 2^{-23}) \times 2^{e - 127} \times 2^8 = 2^{e - 119} + f \times 2^{e-142}$$
+
+而对于非规格化的值，根据定义实际上浮点数的值是$f \times 2^{-23} \times 2^{-126}$，对应到定点数就直接表示成这样：
+$$f \times 2^{-23} \times 2^{-126} \times 2^8 = f \times 2^{-141} $$
+实际上这里非规格化的值、特殊值都不在`fixedpt`的表示范围中，所以只需要了解规格化的值就可以了。
+
+刚才忽略了符号，如果是负数的话就直接给得到的定点数表示做一个相反数（补码）即可。
+
+#### 神奇的LD_PRELOAD
+
+首先我们看一下路径是如何改变的。如果注意到日志的内容这会很好寻找：
+
+```c title="$NAVY_HOME/libs/libos/src/native.cpp"
+static const char *redirect_path(char *newpath, const char *path)
+{
+    get_fsimg_path(newpath, path);
+    if (0 == access(newpath, 0))
+    {
+        fprintf(stderr, "Redirecting file open: %s -> %s\n", path, newpath);
+        return newpath;
+    }
+    return path;
+}
+```
+
+是`get_fsimg_path`重定向了文件的路径。本质上是往前面添加了一个前缀。这个前缀有部分是依靠读环境变量`$NAVY_HOME`读出来的，这一块并不困难。
+
+不过要想用到这个`redirect_path`得先调用`native.so`的`fopen`，`open`， `execve`函数，注意到这是个动态链接库，并不是静态链接上去的，于是注意到`native.mk`文件中是如何运行的：
+
+```make title="$NAVY_HOME/scripts/native.mk"
+run: app env
+	@LD_PRELOAD=$(NAVY_HOME)/libs/libos/build/native.so $(APP) $(mainargs)
+```
+
+网上去man了一下LD_PRELOAD的意思：
+
+>**LD_PRELOAD**
+              A list of additional, user-specified, ELF shared objects to
+              be loaded before all others.  This feature can be used to
+              selectively override functions in other shared objects.
+>
+              The items of the list can be separated by spaces or colons,
+              and there is no support for escaping either separator.  The
+              objects are searched for using the rules given under
+              DESCRIPTION.  Objects are searched for and added to the
+              link map in the left-to-right order specified in the list.
+>
+              In secure-execution mode, preload pathnames containing
+              slashes are ignored.  Furthermore, shared objects are
+              preloaded only from the standard search directories and
+              only if they have set-user-ID mode bit enabled (which is
+              not typical).
+>
+              Within the names specified in the **LD_PRELOAD** list, the
+              dynamic linker understands the tokens  _\$ORIGIN_, _\$LIB_, and
+              _\$PLATFORM_ (or the versions using curly braces around the
+              names) as described above in _Dynamic string tokens_.  (See
+              also the discussion of quoting under the description of
+              **LD_LIBRARY_PATH**.)
+>
+              There are various methods of specifying libraries to be
+              preloaded, and these are handled in the following order:
+>
+              (1)  The **LD_PRELOAD** environment variable.
+>
+              (2)  The **--preload** command-line option when invoking the
+                   dynamic linker directly.
+>
+              (3)  The _/etc/ld.so.preload_ file (described below).
+
+总结一下就是，可以让可执行文件最早地加载某一些动态链接库，就能使这里的`native.so`里的`open`等函数覆盖掉其他的`open`函数。
