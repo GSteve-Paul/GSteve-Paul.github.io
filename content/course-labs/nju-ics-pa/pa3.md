@@ -1203,14 +1203,14 @@ int NDL_Init(uint32_t flags)
 
 #### 把VGA显存抽象成文件
 
-教程中说的很详细了，首先初始化`/dev/fb`的大小：
+教程中说的很详细了，首先初始化`/dev/fb`的大小，这里的vmemsz必须现算，因为`native`的IOE中`vmemsz`是0：
 
 ```c title="nanos-lite/src/fs.c"
 void init_fs()
 {
     // TODO: initialize the size of /dev/fb
     AM_GPU_CONFIG_T conf = io_read(AM_GPU_CONFIG);
-    file_table[FD_FB].size = conf.vmemsz;
+    file_table[FD_FB].size = conf.width * conf.height * 4;
 }
 ```
 
@@ -1266,6 +1266,7 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
     int sx, sy;
     canvas2screen(x, y, &sx, &sy);
     int fd = open("/dev/fb", 0);
+    pixels += y * canvas_w + x;
     for (int i = sy; i < sy + h; i++)
     {
         int offset = i * screen_w + sx;
@@ -1273,7 +1274,7 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
         lseek(fd, offset, SEEK_SET);
         int len = w * 4;
         write(fd, pixels, len);
-        pixels += w;
+        pixels += canvas_w;
     }
     close(fd);
 }
@@ -1284,6 +1285,72 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
 测试程序如下：
 
 ![[Screenshot from 2025-08-10 01-41-32.png]]
+
+上面我的实现中是在`NDL_DrawRect`函数体里面`open`了`/dev/fb`文件，然后写完之后对它进行了`close`操作。这样做的原因是我们在OS中的`open`和`close`系统调用实现并不会产生很大的副作用，随便开开关关也没事。但是这和`native`（也就是navy用户程序直接在本机Linux上）的运行环境并不一致。下面我们来认真探讨一下：
+
+首先我们要确信，`native`的作用就是在navy用户程序所用的系统调用和本机Linux给出的系统调用接口之间做了一个中间层，把本机Linux给出的系统调用接口虚拟成了navy用户程序所需的系统调用接口。于是我们重点在于看在`native`里`/dev/fb`这个文件是如何被处理的：
+
+```c title="$NAVY_HOME/libs/libos/src/native.cpp"
+static void open_display()
+{
+    fb_memfd = memfd_create("fb", 0);
+    assert(fb_memfd != -1);
+    int ret = ftruncate(fb_memfd, FB_SIZE);
+    assert(ret == 0);
+    fb = (uint32_t *)mmap(NULL, FB_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+                          fb_memfd, 0);
+    assert(fb != (void *)-1);
+    memset(fb, 0, FB_SIZE);
+    lseek(fb_memfd, 0, SEEK_SET);
+
+    SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_TIMER);
+    window = SDL_CreateWindow("Simulated Nanos Application",
+                              SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                              WINDOW_W, WINDOW_H, SDL_WINDOW_OPENGL);
+    surface = SDL_CreateRGBSurfaceFrom(fb, disp_w, disp_h, 32,
+                                       disp_w * sizeof(uint32_t), RMASK, GMASK,
+                                       BMASK, AMASK);
+    SDL_CreateThread(event_thread, "event thread", nullptr);
+    SDL_AddTimer(1000 / FPS, texture_sync, NULL);
+}
+
+int open(const char *path, int flags, ...)
+{
+    if (strcmp(path, "/proc/dispinfo") == 0)
+    {
+        return dispinfo_fd;
+    }
+    else if (strcmp(path, "/dev/events") == 0)
+    {
+        return evt_fd;
+    }
+    else if (strcmp(path, "/dev/fb") == 0)
+    {
+        return fb_memfd;
+    }
+    else if (strcmp(path, "/dev/sb") == 0)
+    {
+        return sb_fifo[1];
+    }
+    else if (strcmp(path, "/dev/sbctl") == 0)
+    {
+        return sbctl_fd;
+    }
+    else
+    {
+        char newpath[512];
+        return glibc_open(redirect_path(newpath, path), flags);
+    }
+}
+```
+
+可以看到，在`open_display`里面，用`memfd_create`创建了一个存在于内存中的文件`fb_memfd`，然后设定其大小。接着用`mmap`系统调用把文件映射到内存中，得到指针`fb`。设置画面全0后，把`fb`作为画面数组扔给SDL库生成一个`SDL_Surface`，之后每次刷新画面就用这个`fb`对应的`SDL_Surface`去画图。这样，我们就可以在navy用户程序中通过向`fb_memfd`文件写入画面数据进而更新画面内容了。但是`memfd_create`是有副作用的，手册中写道：
+
+> However, unlike a regular file, it lives in RAM and has a volatile backing storage.  Once all references to the file  are  dropped,  it  is  automatically  released.
+
+所以我们在一次`open()`后再用`close()`，那么这个文件就会不复存在了，之后对它的任何操作也必然是UB了。因此上面我们的`NDL_DrawRect`的实现如果在`native`下运行就会导致诡异的Bug：第一次调用`NDL_DrawRect`，进行一次绘图，非常正常，然后第二次调用`NDL_DrawRect`的时候就会发生UB，有时候会卡住，卡在`lseek`的地方，有时候会直接X11服务器崩溃，还有时会导致空指针，让人摸不着头脑。
+
+所以正确的实现应该是在`NDL_Init`中统一开文件，然后在`NDL_Quit`中统一关文件，这样`fb_memfd`就只会被关一次，就不会导致这个文件提前死亡。
 
 #### 实现居中的画布
 
@@ -1331,16 +1398,18 @@ $$
 按照这个思路就可以实现这些函数了：
 
 ```c title="$NAVY_HOME/libs/libfixedptc/include/fixedptc.h"
-/* Multiplies a fixedpt number with an integer, returns the result. */
-static inline fixedpt fixedpt_muli(fixedpt A, int B)
+/* Multiplies two fixedpt numbers, returns the result. */
+static inline fixedpt fixedpt_mul(fixedpt A, fixedpt B)
 {
-	return A * B;
+	int64_t tmp = A * B;
+	return tmp / 256;
 }
 
-/* Divides a fixedpt number with an integer, returns the result. */
-static inline fixedpt fixedpt_divi(fixedpt A, int B)
+/* Divides two fixedpt numbers, returns the result. */
+static inline fixedpt fixedpt_div(fixedpt A, fixedpt B)
 {
-	return A / B;
+	int64_t tmp = A * 256;
+	return tmp / B;
 }
 
 /* Multiplies two fixedpt numbers, returns the result. */
@@ -1393,7 +1462,7 @@ static inline fixedpt fixedpt_ceil(fixedpt A)
 
 #### 如何将浮点变量转换成fixedpt类型?
 
-虽然这个计算机没有浮点指令，但是我们可以用编译器从软件的角度解析浮点数。首先根据IEEE 754的原则，浮点数是$(-1)^s \times M \times 2^E$ ，设`f`是小数字段的值，`e`是阶码部分的值。`f`，`e`和`s`都可以直接从内存中读出。这里的`s`目前并不重要，所以先当作没有。
+虽然这个计算机没有浮点指令，但是我们可以用编译器从软件的角度解析浮点数。首先根据IEEE 754的原则，浮点数是$(-1)^s \times M \times 2^E$ ，设`f`是小数字段的值，`e`是阶码部分的值。`f`，`e`和`s`都是可以直接从内存中读出的“无符号数”。这里的`s`目前并不重要，所以先当作没有。
 
 对于规格化的值，根据定义实际上浮点数的值是$(1 + f \times 2^{-23}) \times 2^{e - 127}$，对应到定点数可以表示成这样：
 $$(1 + f \times 2^{-23}) \times 2^{e - 127} \times 2^8 = 2^{e - 119} + f \times 2^{e-142}$$
@@ -1433,37 +1502,1077 @@ run: app env
 网上去man了一下LD_PRELOAD的意思：
 
 >**LD_PRELOAD**
-              A list of additional, user-specified, ELF shared objects to
-              be loaded before all others.  This feature can be used to
-              selectively override functions in other shared objects.
 >
-              The items of the list can be separated by spaces or colons,
-              and there is no support for escaping either separator.  The
-              objects are searched for using the rules given under
-              DESCRIPTION.  Objects are searched for and added to the
-              link map in the left-to-right order specified in the list.
 >
-              In secure-execution mode, preload pathnames containing
-              slashes are ignored.  Furthermore, shared objects are
-              preloaded only from the standard search directories and
-              only if they have set-user-ID mode bit enabled (which is
-              not typical).
+ >   A list of additional, user-specified, ELF shared objects to be loaded before all others.  This feature can be used to selectively override functions in other shared objects.The items of the list can be separated by spaces or colons,and there is no support for escaping either separator.            
+>       
+>    The objects are searched for using the rules given under DESCRIPTION.  Objects are searched for and added to the link map in the left-to-right order specified in the list. In secure-execution mode, preload pathnames containing slashes are ignored.  Furthermore, shared objects are preloaded only from the standard search directories and only if they have set-user-ID mode bit enabled (which is not typical).
+>    
+> Within the names specified in the **LD_PRELOAD** list, the dynamic linker understands the tokens  _\$ORIGIN_, _\$LIB_, and _\$PLATFORM_ (or the versions using curly braces around thenames) as described above in _Dynamic string tokens_.  (See also the discussion of quoting under the description of **LD_LIBRARY_PATH**.)
+ >                      
+>    There are various methods of specifying libraries to bepreloaded, and these are handled in the following order:
+>    
+>(1)  The **LD_PRELOAD** environment variable.
+ >             
+>(2)  The **--preload** command-line option when invoking thedynamic linker directly.
 >
-              Within the names specified in the **LD_PRELOAD** list, the
-              dynamic linker understands the tokens  _\$ORIGIN_, _\$LIB_, and
-              _\$PLATFORM_ (or the versions using curly braces around the
-              names) as described above in _Dynamic string tokens_.  (See
-              also the discussion of quoting under the description of
-              **LD_LIBRARY_PATH**.)
->
-              There are various methods of specifying libraries to be
-              preloaded, and these are handled in the following order:
->
-              (1)  The **LD_PRELOAD** environment variable.
->
-              (2)  The **--preload** command-line option when invoking the
-                   dynamic linker directly.
->
-              (3)  The _/etc/ld.so.preload_ file (described below).
+>(3)  The _/etc/ld.so.preload_ file (described below).
 
-总结一下就是，可以让可执行文件最早地加载某一些动态链接库，就能使这里的`native.so`里的`open`等函数覆盖掉其他的`open`函数。
+总结一下就是，可以让可执行文件最早地加载某一些动态链接库，就能使这里的`native.so`里的`open`等函数覆盖掉其他的`open`函数。所以这里的bmp-test用的`libbmp`所调用的`fopen`链接的是`native.so`里的`fopen`而不是`libc`里的`fopen`。
+
+#### 运行NSlider
+
+首先实现一下miniSDL库里的函数，实际上这个miniSDL库和真正的SDL库的API还是不太相同的，比如`SDL_BlitSurface`在miniSDL库里的返回值类型就和真正的SDL库不一样，不过这都是小事情。
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/video.c"
+static void *get_pixel(const SDL_Surface *surface, int16_t x, int16_t y)
+{
+    uint8_t bytes_per_pixel = surface->format->BytesPerPixel;
+    size_t offset = bytes_per_pixel * y * surface->w + bytes_per_pixel * x;
+    return (surface->pixels + offset);
+}
+
+void SDL_BlitSurface(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst,
+                     SDL_Rect *dstrect)
+{
+    assert(dst && src);
+    assert(dst->format->BitsPerPixel == src->format->BitsPerPixel);
+    SDL_Rect default_srcrect = {0, 0, src->w, src->h};
+    if (!srcrect)
+        srcrect = &default_srcrect;
+    SDL_Rect default_dstrect = {0, 0, srcrect->w, srcrect->h};
+    if (!dstrect)
+        dstrect = &default_dstrect;
+    int16_t h = srcrect->h;
+    int16_t w = srcrect->w;
+    for (int16_t i = 0; i < h; i++)
+    {
+        for (int16_t j = 0; j < w; j++)
+        {
+			uint32_t *src_pixel =
+				get_pixel(src, srcrect->x + j, srcrect->y + i);
+			uint32_t *dst_pixel =
+				get_pixel(dst, dstrect->x + j, dstrect->y + i);
+			*dst_pixel = *src_pixel;
+        }
+    }
+}
+
+void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
+{
+    assert(s);
+    if (!(x | y | w | h))
+    {
+        x = y = 0;
+        w = s->w;
+        h = s->h;
+    }
+    NDL_DrawRect((uint32_t *)s->pixels, x, y, w, h);
+}
+```
+
+然后是解决一下pdf转换的问题，实际上框架代码里给出的`$NAVY_HOME/apps/nslider/slides/convert.sh`几乎不能用，所以下面给出我的实现。我首先用一个python脚本把一个pdf的每一页转化为了bmp图像，然后再用bash把文件传到合适的地方：
+
+```python title="$NAVY_HOME/apps/nslider/slides/bmp-generator.py"
+import sys
+from pdf2image import convert_from_path
+from PIL import Image
+
+pdf_path = "./slides.pdf"
+pages = convert_from_path(pdf_path, dpi=300)
+
+for i, page in enumerate(pages):
+    page_resized = page.resize((400, 300), Image.LANCZOS)
+    bmp_name = f"slides-{i}.bmp"
+    page_resized.save(bmp_name, "BMP")
+```
+
+```bash title="$NAVY_HOME/apps/nslider/slides/convert.sh"
+#!/bin/bash
+
+python3 ./bmp-generator.py
+
+mkdir -p $NAVY_HOME/fsimg/share/slides/
+rm -f $NAVY_HOME/fsimg/share/slides/*
+mv *.bmp $NAVY_HOME/fsimg/share/slides/
+```
+
+所以说把一个pdf文件放到该目录下然后`bash ./convert.sh`就可以了，不过应当注意要把`$NAVY_HOME/apps/nslider/src/main.cpp`里面的常量`N`改为真实的bmp文件的数目，然后就可以启动了。
+
+![[Pasted image 20250811151225.png]]
+#### 运行NSlider(2)
+
+要明白SDL中的是如何打包事件的，主要要看懂这几个结构体和联合：
+
+```c title="$NAVY_HOME/libs/libminiSDL/include/sdl-event.h"
+typedef struct {
+  uint8_t sym;
+} SDL_keysym;
+
+typedef struct {
+  uint8_t type;
+  SDL_keysym keysym;
+} SDL_KeyboardEvent;
+
+typedef struct {
+  uint8_t type;
+  int code;
+  void *data1;
+  void *data2;
+} SDL_UserEvent;
+
+typedef union {
+  uint8_t type;
+  SDL_KeyboardEvent key;
+  SDL_UserEvent user;
+} SDL_Event;
+```
+
+这里用了union的一些很有意思的小技巧，这里我把`SDL_Event`的前2字节画出来一下：
+
+| `SDL_Event` | 0~7    | 8~15   |
+| ----------- | ------ | ------ |
+| `type`      | `type` |        |
+| `key`       | `type` | `sym`  |
+| `user`      | `type` | `code` |
+
+所以说这里的`type`就可以判断`SDL_Event`的类型，然后`SDL_KeyboardEvent`后面的内容才是用来表示这个类型所对应的事件信息的。对于`SDL_WaitEvent`，它是一个忙等的函数，在实现的时候就拿一个循环一直读取键盘事件直到读到了为止。我的具体实现如下：
+
+```c title="$NAVY_HOME$/libs/libminiSDL/src/event.c"
+int SDL_WaitEvent(SDL_Event *event)
+{
+    char buf[100];
+    int rd = NDL_PollEvent(buf, sizeof(buf) / sizeof(char));
+    while (rd == 0)
+    {
+        rd = NDL_PollEvent(buf, sizeof(buf) / sizeof(char));
+    }
+    if (buf[0] == 'k')
+    {
+        switch (buf[1])
+        {
+        case 'd':
+            event->key.type = SDL_KEYDOWN;
+            break;
+        case 'u':
+            event->key.type = SDL_KEYUP;
+            break;
+        default:
+            assert(0);
+        }
+        char *event_key_name = buf + 3;
+        buf[strlen(buf) - 1] = '\0';
+        for (int i = 0; i < sizeof(keyname) / sizeof(char *); i++)
+        {
+            if (strcmp(keyname[i], event_key_name) == 0)
+            {
+                event->key.keysym.sym = i;
+                break;
+            }
+        }
+    }
+    else
+    {
+        assert(0);
+    }
+    return 1;
+}
+```
+
+关于如何翻页：看一下源码中哪些地方会调用`prev`和`next`就懂了，实际上键位和vim差不多。下面是一个演示：
+
+![[Screencast from 2025-08-11 15-39-11.mp4]]
+
+#### 运行开机菜单
+
+实现一个`SDL_FillRect`就好了：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/video.c"
+void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color)
+{
+    assert(dst);
+    SDL_Rect default_rect = {0, 0, dst->w, dst->h};
+    if (!dstrect)
+        dstrect = &default_rect;
+    for (int16_t i = 0; i < dstrect->h; i++)
+    {
+        for (int16_t j = 0; j < dstrect->w; j++)
+        {
+			uint32_t *pixel = get_pixel(dst, dstrect->x + j, dstrect->y + i);
+			*pixel = color;
+        }
+    }
+}
+```
+
+演示如下：
+![[Pasted image 20250811164632.png]]
+
+#### 运行NTerm
+
+首先实现一下miniSDL库，`SDL_GetTicks`要求从SDL库初始化的时候开始计时，因此要在`SDL_Init`函数中先得到一开始的毫秒数，然后每次调用`SDL_GetTicks`的时候再减去初始值，这里就不多做赘述。
+
+然后是`SDL_PollEvent`，它并不需要忙等，所以像下面这样实现就好：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/event.c"
+int SDL_PollEvent(SDL_Event *ev)
+{
+    char buf[100];
+    int rd = NDL_PollEvent(buf, sizeof(buf) / sizeof(char));
+    if (rd == 0)
+        return 0;
+    if (buf[0] == 'k')
+    {
+        switch (buf[1])
+        {
+        case 'd':
+            ev->key.type = SDL_KEYDOWN;
+            break;
+        case 'u':
+            ev->key.type = SDL_KEYUP;
+            break;
+        default:
+            assert(0);
+        }
+        char *event_key_name = buf + 3;
+        buf[strlen(buf) - 1] = '\0';
+        for (int i = 0; i < sizeof(keyname) / sizeof(char *); i++)
+        {
+            if (strcmp(keyname[i], event_key_name) == 0)
+            {
+                ev->key.keysym.sym = i;
+                break;
+            }
+        }
+    }
+    else
+    {
+        assert(0);
+    }
+    return 1;
+}
+```
+
+
+下面是演示：
+
+![[Pasted image 20250811200555.png]]
+#### 实现内建的echo命令
+
+阅读nterm的`builtin-sh.cpp`代码就会知道`sh_handle_cmd`就是用来出理每一条命令的。类似于我们在NEMU里面做的sdb，我们用相同的方式解析命令并执行命令：
+
+```c title="$NAVY_HOME/apps/nterm/src/builtin-sh.cpp"
+static int sh_echo(char *cmd); 
+
+static struct {
+	const char *name;
+	const char *description;
+	int (*handler) (char *);
+} cmd_table[] = {
+	{"echo", "display a line of text", sh_echo}
+};
+
+static int sh_echo(char *args) 
+{
+	sh_printf("%s", args);	
+	return 0;
+}
+
+static void sh_handle_cmd(const char *cmd) 
+{
+	char *command = (char *)cmd;
+	char *first = strtok(command, " \n");
+	size_t arrlen = sizeof(cmd_table) / sizeof(cmd_table[0]);
+	char *args = first + strlen(first) + 1;
+	int i;
+	for (i = 0; i < arrlen; i++) 
+	{
+		if (strcmp(first, cmd_table[i].name) == 0) {
+			cmd_table[i].handler(args);
+			break;
+		}
+	}
+	if (i == arrlen) 
+	{
+		setenv("PATH", "/bin", 0);
+		execvp(first, NULL);
+	}
+}
+```
+
+这样就可以`echo`啦：
+
+![[Pasted image 20250811202055.png]]
+#### 运行Flappy Bird
+
+首先尝试一下在Linux上直接运行sdlbird，这需要我安装这些东西：
+
+```sh
+sudo apt install libsdl1.2-dev libsdl-image1.2-dev
+```
+
+然后`make run`就可以运行了。
+
+要在riscv32-nemu上运行，还需要实现`IMG_Load`，实现很简单，通过`ftell`得到图片文件大小之后在内存中开一段这么大的数组，然后再用`STBIMG_LoadFromMemory`加载到这个数组中：
+
+```c title="$NAVY_HOME/libs/libSDL_image/src/image.c"
+SDL_Surface *IMG_Load(const char *filename)
+{
+    FILE *f = fopen(filename, "rb");
+    fseek(f, 0, SEEK_END);
+    size_t f_sz = ftell(f);
+    uint8_t *buf = (uint8_t *)malloc(f_sz);
+    fseek(f, 0, SEEK_SET);
+    fread(buf, sizeof(uint8_t), f_sz, f);
+    fclose(f);
+    return STBIMG_LoadFromMemory(buf, f_sz);
+}
+```
+
+可以看到riscv32-NEMU的性能真的不咋的（太慢了），不过一方面也是因为我为了调试，让nanos-lite和navy上的程序都是`-O0 -g`进行编译的，没有做足够的优化。
+
+![[Screencast from 2025-08-11 20-51-07.mp4]]
+
+#### 我不是南京大学的学生, 如何获取仙剑奇侠传的数据文件?
+
+https://www.52pojie.cn/thread-1011448-1-1.html
+
+然后把这些数据包东拼西凑一下，就勉强能玩了。建议在下面实现代码前在Linux上先运行一下仙剑奇侠传，确保能玩之后再写，不然之后遇到bug可能是数据包的问题。
+
+不过南京大学这个课程应该还会附加几个存档，这就无能为力了。
+
+#### 运行仙剑奇侠传
+
+首先处理关于调色盘的问题，教程中已经说的很明确了，就是把颜色当作下标在调色盘里取值就可以了。不过这里建议在实现`SDL_UpdateRect`的时候先把整个屏幕换成32位颜色表示了再用`NDL_DrawRect`写进去，如果你是一个像素一个像素转换了就写的话，系统调用的次数过多，性能会特别差，根本玩不了。所以我们这样修改一下代码：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/video.c" {132}
+void SDL_BlitSurface(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst,
+                     SDL_Rect *dstrect)
+{
+    assert(dst && src);
+    assert(dst->format->BitsPerPixel == src->format->BitsPerPixel);
+    SDL_Rect default_srcrect = {0, 0, src->w, src->h};
+    if (!srcrect)
+        srcrect = &default_srcrect;
+    SDL_Rect default_dstrect = {0, 0, srcrect->w, srcrect->h};
+    if (!dstrect)
+        dstrect = &default_dstrect;
+    int16_t h = srcrect->h;
+    int16_t w = srcrect->w;
+
+    int16_t map[256];
+    for (int i = 0; i < 256; i++)
+        map[i] = -1;
+
+    for (int16_t i = 0; i < h; i++)
+    {
+        for (int16_t j = 0; j < w; j++)
+        {
+            if (src->format->BitsPerPixel == 32)
+            {
+                uint32_t *src_pixel =
+                    get_pixel(src, srcrect->x + j, srcrect->y + i);
+                uint32_t *dst_pixel =
+                    get_pixel(dst, dstrect->x + j, dstrect->y + i);
+                *dst_pixel = *src_pixel;
+            }
+            else if (src->format->BitsPerPixel == 8)
+            {
+                uint8_t *src_pixel =
+                    get_pixel(src, srcrect->x + j, srcrect->y + i);
+                uint8_t *dst_pixel =
+                    get_pixel(dst, dstrect->x + j, dstrect->y + i);
+                if (map[*src_pixel] == -1)
+                {
+                    uint32_t src_color =
+                        src->format->palette->colors[*src_pixel].val;
+                    for (int k = 0; k < dst->format->palette->ncolors; k++)
+                    {
+                        if (dst->format->palette->colors[k].val == src_color)
+                        {
+                            *dst_pixel = k;
+                            map[*src_pixel] = k;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    *dst_pixel = map[*src_pixel];
+                }
+            }
+            else
+            {
+                assert(0);
+            }
+        }
+    }
+}
+
+void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color)
+{
+    assert(dst);
+    SDL_Rect default_rect = {0, 0, dst->w, dst->h};
+    if (!dstrect)
+        dstrect = &default_rect;
+    uint8_t color_idx = -1;
+    if (dst->format->BitsPerPixel == 8)
+    {
+        for (int i = 0; i < dst->format->palette->ncolors; i++)
+        {
+            if (dst->format->palette->colors[i].val == color)
+            {
+                color_idx = i;
+                break;
+            }
+        }
+    }
+    for (int16_t i = 0; i < dstrect->h; i++)
+    {
+        for (int16_t j = 0; j < dstrect->w; j++)
+        {
+            if (dst->format->BitsPerPixel == 32)
+            {
+                uint32_t *pixel =
+                    get_pixel(dst, dstrect->x + j, dstrect->y + i);
+                *pixel = color;
+            }
+            else if (dst->format->BitsPerPixel == 8)
+            {
+                uint8_t *pixel = get_pixel(dst, dstrect->x + j, dstrect->y + i);
+                *pixel = color_idx;
+            }
+            else
+            {
+                assert(0);
+            }
+        }
+    }
+}
+
+void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
+{
+    assert(s);
+    if (!(x | y | w | h))
+    {
+        x = y = 0;
+        w = s->w;
+        h = s->h;
+    }
+    static uint32_t good_pixels[400 * 300];
+    if (s->format->BitsPerPixel == 32)
+    {
+        NDL_DrawRect((uint32_t *)s->pixels, x, y, w, h);
+    }
+    else if (s->format->BitsPerPixel == 8)
+    {
+        assert(s->format->palette->ncolors == 256);
+        static uint32_t new_pixels[400 * 300];
+        for (int i = y; i < y + h; i++)
+        {
+            for (int j = x; j < x + w; j++)
+            {
+                uint8_t *pixel = get_pixel(s, j, i);
+                uint32_t real_pixel = s->format->palette->colors[*pixel].val;
+                new_pixels[i * s->w + j] = real_pixel;
+            }
+        }
+        ConvertPixelsARGB_ABGR(good_pixels, new_pixels, s->w * s->h);
+        NDL_DrawRect(good_pixels, x, y, w, h);
+    }
+    else
+    {
+        assert(0);
+    }
+}
+```
+
+注意到高亮行的内容，这行的意思是把`new_pixels`里面的颜色的R域和B域进行调换，然后放到`good_pixels`。原因是仙剑奇侠传里调色盘里的颜色摆放顺序和我们NEMU的VGA的颜色摆放顺序不同，所以要做这么个转换：
+
+| color   | 0~7 | 8~15 | 16~23 | 24~31 |
+| ------- | --- | ---- | ----- | ----- |
+| palette | r   | g    | b     | a     |
+| vga     | b   | g    | r     | a     |
+
+否则，你看到的仙剑奇侠传的颜色可能有点诡异，甚至有点阴森恐怖：
+
+![[Pasted image 20250812120129.png]]
+而正常的应该是这样：
+
+![[Pasted image 20250812120255.png]]
+此外还需要实现两个API：`SDL_GetKeyState`与`SDL_Delay`。后者很简单，用`SDL_GetTicks`忙等就可以了。但是前一个需要稍微改动一下之前的代码，即在`SDL_PollEvent`和`SDL_WaitEvent`拿到一个键盘事件后更新键盘状态即可，我是这样实现的：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/event.c" {28}
+uint8_t key_state[SDLK_PAGEDOWN + 1] = {0};
+
+int analyze_event(char *buf, SDL_Event *ev)
+{
+    if (buf[0] == 'k')
+    {
+        switch (buf[1])
+        {
+        case 'd':
+            ev->key.type = SDL_KEYDOWN;
+            break;
+        case 'u':
+            ev->key.type = SDL_KEYUP;
+            break;
+        default:
+            assert(0);
+        }
+        char *event_key_name = buf + 3;
+        buf[strlen(buf) - 1] = '\0';
+        for (int i = 0; i < sizeof(keyname) / sizeof(char *); i++)
+        {
+            if (strcmp(keyname[i], event_key_name) == 0)
+            {
+                ev->key.keysym.sym = i;
+                break;
+            }
+        }
+        key_state[ev->key.keysym.sym] = (ev->key.type == SDL_KEYDOWN);
+    }
+    else
+    {
+        assert(0);
+    }
+    return 1;
+}
+
+...
+
+uint8_t *SDL_GetKeyState(int *numkeys)
+{
+    return key_state;
+}
+```
+
+下面就可以在高达4FPS的帧率下极致畅玩了：
+
+![[Screencast from 2025-08-12 13-39-28.mp4]]
+
+#### 仙剑奇侠传的框架是如何工作的?
+
+看`$NAVY_HOME/apps/pal/repo/src/game/play.c`，等待帧和获取输入在`PAL_DelayUntil`函数里，每一帧的渲染工作在`PAL_StartFrame`函数里，更新游戏逻辑在这个`PAL_StartFrame`开头调用的`PAL_GameUpdate`函数里。
+
+突然注意到pal的源码中有个`PAL_FadeIn`函数，这是用来做渐入效果的：
+
+```c title="$NAVY_HOME/apps/pal/repo/src/device/palette.c"
+VOID
+PAL_FadeIn(
+   INT         iPaletteNum,
+   BOOL        fNight,
+   INT         iDelay
+)
+/*++
+  Purpose:
+
+    Fade in the screen to the specified palette.
+
+  Parameters:
+
+    [IN]  iPaletteNum - number of the palette.
+
+    [IN]  fNight - whether use the night palette or not.
+
+    [IN]  iDelay - delay time for each step.
+
+  Return value:
+
+    None.
+
+--*/
+{
+   int                      i, j;
+   UINT                     time;
+   SDL_Color               *palette;
+   PAL_LARGE SDL_Color     *newpalette = malloc(sizeof(newpalette[0]) * 256);
+
+   //
+   // Get the new palette...
+   //
+   palette = PAL_GetPalette(iPaletteNum, fNight);
+
+   //
+   // Start fading in...
+   //
+   time = SDL_GetTicks() + iDelay * 10 * 60;
+   while (TRUE)
+   {
+      //
+      // Set the current palette...
+      //
+      j = (int)(time - SDL_GetTicks()) / iDelay / 10;
+      if (j < 0)
+      {
+         break;
+      }
+
+      j = 60 - j;
+
+      for (i = 0; i < 256; i++)
+      {
+         newpalette[i].r = (palette[i].r * j) >> 6;
+         newpalette[i].g = (palette[i].g * j) >> 6;
+         newpalette[i].b = (palette[i].b * j) >> 6;
+      }
+
+      VIDEO_SetPalette(newpalette);
+
+      UTIL_Delay(10);
+   }
+
+   VIDEO_SetPalette(palette);
+
+   free(newpalette);
+}
+```
+
+这个循环里的内容无疑证明了我[[pa2#神奇的调色板|之前的猜想]]，这个效果就是通过换调色盘做出来的。
+
+#### 仙剑奇侠传的脚本引擎
+
+我并没有得到任何新的认识，因为我之前根本不认识游戏引擎。
+
+感觉脚本引擎就和一个NEMU差不多，NEMU会一条条解释指令并执行，相似的，`PAL_InterpretInstruction`做的事情就是解析其中的一条脚本命令，根据这个命令的操作码和附带的目标物，然后对它做相应的动作，也就是更改了游戏的状态，然后再指向下一个指令。
+
+这样游戏开发者就不用把游戏逻辑写死在代码里，可以把基本逻辑固定下来，其他的就可以写成脚本，然后用这种解释的方式进行运行，这样能方便更改游戏逻辑。
+
+#### 不再神秘的秘技
+
+猜测是因为整型溢出、类型不匹配导致的一些神奇的Bug，pal源码太长了看不下去，所以没得到具体代码的证实。
+
+#### 实现Navy上的AM
+
+看起来有点惊人，不过这确实是可以实现的，我们不妨整理一下程序的依赖关系：
+
+AM应用程序 -> libam -> Navy运行时环境（Newlib，libndl）-> nanos-lite -> ...
+
+而目前AM应用程序本身用的是AM的环境，所以我们在libam里做的事情就是用Newlib、libndl实现AM的环境，包装成一个libam静态库，让AM应用程序调用库里的函数即可。AM环境里的klib可以直接用Newlib替代了，需要我们另外实现的其实也就只有IOE和TRM的部分。TRM的`_trm_init`也不用另外实现，这是因为在Navy环境下有libos，这个libos中有提供一个类似的`call_main`函数用于启动程序。
+
+了解了整个架构，具体实现其实一点儿都不难，下面给出libam的IOE中的gpu，input，timer和TRM的实现，其他的很简单就不多做赘述：
+
+```cpp title="$NAVY_HOME/libs/libam/src/trm.cpp"
+#include <am.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+Area heap;
+
+void putch(char ch)
+{
+    putchar(ch);
+}
+
+void halt(int code)
+{
+    exit(code);
+}
+```
+
+
+```c title="$NAVY_HOME/libs/libam/src/gpu.c"
+#include <NDL.h>
+#include <am.h>
+#include <stdlib.h>
+
+static int width = 0, height = 0;
+static uint32_t *buf = NULL;
+
+void __am_gpu_init()
+{
+    NDL_OpenCanvas(&width, &height);
+    buf = malloc(width * height * 4);
+    memset(buf, 0, width * height * 4);
+}
+
+void __am_gpu_config(AM_GPU_CONFIG_T *cfg)
+{
+    *cfg = (AM_GPU_CONFIG_T){.present = true,
+                             .has_accel = false,
+                             .width = width,
+                             .height = height,
+                             .vmemsz = width * height * 4};
+}
+
+void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl)
+{
+    uint32_t *pixels = (uint32_t *)ctl->pixels;
+    for (int j = ctl->y; j < ctl->y + ctl->h; j++)
+    {
+        for (int i = ctl->x; i < ctl->x + ctl->w; i++)
+        {
+            buf[j * width + i] = pixels[(j - ctl->y) * ctl->w + i - ctl->x];
+        }
+    }
+    if (ctl->sync)
+    {
+        NDL_DrawRect(buf, 0, 0, width, height);
+    }
+}
+
+void __am_gpu_status(AM_GPU_STATUS_T *status)
+{
+    status->ready = true;
+}
+```
+
+```c title="$NAVY_HOME/libs/libam/src/input.c"
+#include <NDL.h>
+#include <am.h>
+#include <assert.h>
+#include <string.h>
+
+#define keyname(k) #k,
+static const char *keyname[] = {"NONE", AM_KEYS(keyname)};
+
+void __am_input_config(AM_INPUT_CONFIG_T *cfg)
+{
+    cfg->present = true;
+}
+
+void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd)
+{
+    char buf[100];
+    int ret = NDL_PollEvent(buf, 99);
+    if (ret == 0)
+    {
+        kbd->keycode = AM_KEY_NONE;
+        kbd->keydown = false;
+    }
+    else
+    {
+        if (buf[0] == 'k')
+        {
+            switch (buf[1])
+            {
+            case 'd':
+                kbd->keydown = true;
+                break;
+            case 'u':
+                kbd->keydown = false;
+                break;
+            default:
+                assert(0);
+            }
+            char *event_key_name = buf + 3;
+            buf[strlen(buf) - 1] = '\0';
+            for (int i = 0; i < sizeof(keyname) / sizeof(char *); i++)
+            {
+                if (strcmp(keyname[i], event_key_name) == 0)
+                {
+                    kbd->keycode = i;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            assert(0);
+        }
+    }
+}
+```
+
+```c title="$NAVY_HOME/libs/libam/src/timer.c"
+#include <NDL.h>
+#include <am.h>
+
+void __am_timer_config(AM_TIMER_CONFIG_T *cfg)
+{
+    cfg->present = true;
+    cfg->has_rtc = true;
+}
+
+void __am_timer_rtc(AM_TIMER_RTC_T *rtc)
+{
+    rtc->second = 0;
+    rtc->minute = 0;
+    rtc->hour = 0;
+    rtc->day = 0;
+    rtc->month = 0;
+    rtc->year = 1900;
+}
+
+void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime)
+{
+    uptime->us = NDL_GetTicks() * 1000;
+}
+```
+
+#### 在Navy中运行microbench
+
+比如我们以`make ISA=native ALL=microbench run`来运行，程序会在读取`main`函数的唯一的参数`args`的地方崩溃。其原因是AM中对`main`函数的定义并不标准。具体而言，我们在`native`下链接的时候，GCC会认为的`main`函数原型应该是这样的：`int main(int argc, char *argv[], char *envp[])`，所以实际传给`main`函数的参数排布也是这样子的。然而在microbench中的`main`是这个样子`int main(const char *args)`，就会导致拿到的`args`是一个异常值。
+
+而如果是在riscv32-nemu上的nanos-lite中运行，同样的道理，也会导致拿到的`args`是一个异常值。不过恰好在`$NAVY_HOME/libs/libos/src/crt0/crt0.c`的实现中，传给`main`的参数全是0，这就使得microbench程序拿到的也是0，正好让它变成空指针，让microbench自动选择ref模式了，反而能跑。🤣
+
+不过除此之外microbench还会有问题：它的内存申请方式不是用`malloc/free`，而是直接操作图灵机的`heap`。因此我们开一个足够大的内存作为在Navy上虚拟出来的一个`heap`：
+```c title="$NAVY_HOME/libs/libam/src/trm.cpp"
+static constexpr size_t HEAP_SIZE = 1024 * 1024 * 4;
+static uint32_t heap_buf[HEAP_SIZE];
+Area heap = RANGE(heap_buf, heap_buf + HEAP_SIZE);
+```
+这样microbench就可以跑起来了，我的跑分是534分。
+
+#### 运行FCEUX
+
+FCEUX和microbench一样，都有`main`函数不标准的问题。不过由于Navy支持文件系统，所以我们完全可以在Makefile里面去掉宏`__NO_FILE_SYSTEM__`，然后就会变成正常的`main`函数了。不过这样会使得FCEUX会使用超过TRM的东西（比如文件读写），但是无所谓了，毕竟这样功能更全面。
+
+```cpp title="fceux-am/src/drivers/sdl/sdl.cpp"
+#ifdef __NO_FILE_SYSTEM__
+int main(const char *romname)
+#else
+int main(int argc, char *argv[])
+#endif
+```
+注意到框架代码里有如下配置：
+
+```c title="fceux-am/src/config.h" {20}
+#if defined(__ARCH_NATIVE) || defined(__PLATFORM_QEMU)
+#define PERF_CONFIG PERF_HIGH
+#elif defined(__PLATFORM_NEMU)
+#define PERF_CONFIG PERF_MIDDLE
+#else
+#define PERF_CONFIG PERF_LOW
+#endif
+
+#if PERF_CONFIG == PERF_HIGH
+#define NR_FRAMESKIP 0
+#define SOUND_CONFIG SOUND_HQ
+#define FUNC_IDX_MAX256
+#elif PERF_CONFIG == PERF_MIDDLE
+#define NR_FRAMESKIP 1
+#define SOUND_CONFIG SOUND_LQ
+#define FUNC_IDX_MAX256
+#else
+#define NR_FRAMESKIP 2
+#define SOUND_CONFIG SOUND_NONE
+#define FUNC_IDX_MAX16
+#endif
+```
+
+这就意味着如果我们以Navy的环境运行，编译的时候只会定义一个`__ISA_NATIVE__`，这将导致上面的代码确定`PERF_CONFIG`是`PERF_LOW`，进而在高亮处定义一个`FUNC_IDX_MAX16`，这会导致游戏里面一个注册函数的模块因为`BWrite`数组不够大而报错：
+
+```c title="fceux-am/src/fceu.cpp" {7}
+static int RegisterBWrite(writefunc func) {
+  int i;
+  for (i = 0; i < FUNC_IDX_MAX; i ++) {
+    if (BWrite[i] == NULL) BWrite[i] = func;
+    if (BWrite[i] == func) return i;
+  }
+  assert(i < FUNC_IDX_MAX);
+  return -1;
+}
+```
+
+所以我把这个`FUNC_IDX_MAX16`改成了`FUNC_IDX_MAX256`，就能够在`$NAVY_HOME/apps/fceux`下以`make ISA=native run`运行FCEUX了。这里有个小提示，在编译的时候添上`-g3`，就可以在GDB里通过`info macro xxx`查看xxx这个宏的值。
+
+下面是让FCEUX运行在riscv32-nemu上的nanos-lite上的Navy上的真实影像，真的很卡：
+
+![[Screencast from 2025-08-13 15-08-22.mp4]]
+
+#### 如何在Navy上运行Nanos-lite?
+
+难点在于CTE，也就是用来注册事件处理函数的`cte_init`。一个比较粗暴的方式就是把“启动一个事件”和“接收一个事件”用函数链接的形式做出来，这种方法很简单但是不太安全。还有个方式是在nanos-lite中做一个新的系统调用，这个系统调用的语义逻辑就是根据传入的事件信息用事件处理函数进行处理。
+
+#### 诞生于"未来"的游戏
+
+在`native`上的`Navy`上挺好玩的，因为不卡。当然在riscv32-nemu上的nanos-lite上也是可以玩的，不过要注意这些文件有点多，要防止生成的ramdisk.img过大。
+
+这是171240518这个游戏的一个胜利结算：
+![[Pasted image 20250813172557.png]]
+
+#### RTFSC???
+
+感觉这些代码的生成过程就是用PA1表达式求值里的token分析类似的方法获取源代码的各个符号，然后把各个符号用乱码进行一个整体的替换。但是AM那些接口函数没变，所以我由此发现了我的TRM的申请内存的一个小bug。
+
+#### 运行NPlayer
+
+已知要实现在NPlayer中播放音频需要经过如下的层次：
+
+NPlayer->Navy(libminiSDL, libndl)->nanos-lite(syscall, fs, device)->AM->...
+
+AM以及右边的已经在[[pa2#实现声卡|PA2]]都实现了，首先需要在nanos-lite中的VFS中添加教程中所规定的两个设备：
+
+```c title="nanos-list/src/fs.c" {8-9}
+Finfo file_table[] __attribute__((used)) = {
+    [FD_STDIN] = {"stdin", 0, 0, 0, 1, invalid_read, invalid_write},
+    [FD_STDOUT] = {"stdout", 0, 0, 0, 1, invalid_read, serial_write},
+    [FD_STDERR] = {"stderr", 0, 0, 0, 1, invalid_read, serial_write},
+    [FD_FBINFO] = {"/proc/dispinfo", 0, 0, 0, 1, dispinfo_read, invalid_write},
+    [FD_EVENT] = {"/dev/events", 0, 0, 0, 1, events_read, invalid_write},
+    [FD_FB] = {"/dev/fb", 0, 0, 0, 0, invalid_read, fb_write},
+    [FD_SB] = {"/dev/sb", 0, 0, 0, 1, invalid_read, sb_write},
+    [FD_SBCTL] = {"/dev/sbctl", 0, 0, 0, 1, sbctl_read, sbctl_write},
+#include "files.h"
+};
+```
+
+然后就是具体实现对`/dev/sb`和`/dev/sbctl`的IO操作，需要注意的是教程中介绍`/dev/sbctl`的有句话很具有迷惑性：
+
+> 读出时用于查询声卡设备的状态, 应用程序可以读出一个`int`整数, 表示当前声卡设备流缓冲区的空闲字节数. 该设备不支持`lseek`.
+
+这里所说的“应用程序可以读出一个int整数”，指的是nanos-lite提供的是这个整数的字符串表示，而非是一个`int32_t`！所以下面的实现中我用`sprintf`把数字以字符串的形式写到了`buf`中。
+
+具体实现如下：
+
+```c title="nanos-lite/src/device.c"
+static int sb_size = -1;
+
+size_t sb_write(const void *buf, size_t offset, size_t len)
+{
+    io_write(AM_AUDIO_PLAY, {(void *)buf, (void *)buf + len});
+    return len;
+}
+
+size_t sbctl_read(void *buf, size_t offset, size_t len)
+{
+    int32_t free = sb_size - io_read(AM_AUDIO_STATUS).count;
+    int ret = sprintf(buf, "%d", free);
+    return ret;
+}
+
+size_t sbctl_write(const void *buf, size_t offset, size_t len)
+{
+    assert(len == 12);
+    uint32_t *ctl_buf = (uint32_t *)buf;
+    io_write(AM_AUDIO_CTRL, ctl_buf[0], ctl_buf[1], ctl_buf[2]);
+    return len;
+}
+
+void init_device()
+{
+    Log("Initializing devices...");
+    ioe_init();
+    AM_GPU_CONFIG_T gpu_conf = io_read(AM_GPU_CONFIG);
+    screen_width = gpu_conf.width;
+    screen_height = gpu_conf.height;
+    AM_AUDIO_CONFIG_T audio_conf = io_read(AM_AUDIO_CONFIG);
+    sb_size = audio_conf.bufsize;
+}
+```
+
+这样，应用程序就可以通过调用`SYS_write`和`SYS_read`系统调用来使用音频设备了。所以现在实现一下libndl，包装一下调用系统调用的过程。
+
+```c title="$NAVY_HOME/libs/libndl/src/NDL.c"
+void NDL_OpenAudio(int freq, int channels, int samples)
+{
+    uint32_t buf[3] = {freq, channels, samples};
+    write(sbctldev, buf, sizeof(buf));
+}
+
+void NDL_CloseAudio()
+{
+}
+
+int NDL_PlayAudio(void *buf, int len)
+{
+    return write(sbdev, buf, len);
+}
+
+int NDL_QueryAudio()
+{
+    char buf[100];
+    read(sbctldev, buf, sizeof(buf));
+    int32_t count = 0;
+    for (int i = 0; i < sizeof(buf); i++)
+    {
+        if (buf[i] == 0)
+            break;
+        count *= 10;
+        count += (buf[i] - '0');
+    }
+    return count;
+}
+```
+
+接下来就是实现libminiSDL，其实现并不复杂：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/audio.c"
+SDL_AudioSpec audiospec;
+bool pause = true;
+
+int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
+{
+    NDL_OpenAudio(desired->freq, desired->channels, desired->samples);
+    audiospec = *desired;
+    if (obtained)
+    {
+        *obtained = *desired;
+    }
+    return 0;
+}
+
+void SDL_CloseAudio()
+{
+}
+
+void SDL_PauseAudio(int pause_on)
+{
+    pause = pause_on;
+}
+```
+
+难点在于用户程序传入给`SDL_OpenAudio`的参数`desire`中的`callback`回调函数。首先明确一下这个回调函数的意义：SDL库会周期性调用这个回调函数，然后用户的回调函数实现就会把`len`长度的音频数据放到`stream`指向的内存区域里，因此SDL库访问`stream`就可以知道用户想要播放的音频数据了。
+
+那第一个问题就是周期性调用的周期是多少？首先通过[这篇文章](https://www.suninf.net/2023/01/audio-framerate-and-sample.html)了解一下`freq`，`samples`和`channels`是什么意思。看完文章后就能知道一次回调函数实质上就得到了一个音频帧。所以设调用回调函数的周期是$T$，单位是秒，则根据简单的小学数学知识，有：
+
+$$
+\frac{1}{T} \cdot samples  = freq
+$$
+
+这样就可以计算出$T$的值了，不过我在实现中用的是毫秒为单位，这样和`NDL_GetTicks`对得上。
+
+第二个问题在于如何定时调用回调函数。在这里教程中说可以实现一个辅助函数，然后尽可能在miniSDL库中经常调用，就假装像是有信号机制，会定时运行似的。所以就按教程这样来吧：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/audio.c"
+SDL_AudioSpec audiospec;
+bool pause = true;
+uint32_t callback_cycle;     // ms
+uint32_t last_call_time = 0; // ms
+static uint8_t *frame;
+static int frame_size = 0;
+
+void CallbackHelper()
+{
+    uint32_t current = NDL_GetTicks();
+    if (current - last_call_time < callback_cycle || pause)
+        return;
+    int len = NDL_QueryAudio();
+    if (len > frame_size)
+        len = frame_size;
+    audiospec.callback(audiospec.userdata, frame, len);
+    NDL_PlayAudio(frame, len);
+    last_call_time = current;
+}
+
+int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
+{
+    NDL_OpenAudio(desired->freq, desired->channels, desired->samples);
+    audiospec = *desired;
+    if (obtained)
+    {
+        *obtained = *desired;
+    }
+    callback_cycle = (int32_t)audiospec.samples * 1000 / audiospec.freq;
+    last_call_time = NDL_GetTicks();
+    frame_size = audiospec.samples * audiospec.channels * sizeof(int16_t);
+    frame = malloc(frame_size);
+    return 0;
+}
+```
+
+在尝试运行NPlayer时，发现了它所调用的vorbis可以检查出差劲的`fixedpt_div`的实现：好的实现一定是先乘再除的，不然如果先除后乘，因为C语言的除法是整除，那么一旦$A < B$，那直接就变成$0$了，小数部分就没了。
+
+![[simplescreenrecorder-2025-08-14_16.47.52.mp4]]
+
+可通过键盘的等于号和减号进行音量加减。
+
+#### 播放自己喜欢的音乐
+
+来点朝鲜🇰🇵金曲,不过在nanos-lite上是真的有点卡，所以我选择在native上运行：
+
+![[simplescreenrecorder-2025-08-15_00.11.55.mp4]]
+
+#### 让运行时环境支持C++全局对象的初始化
+
