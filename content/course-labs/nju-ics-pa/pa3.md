@@ -2505,6 +2505,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 
 void SDL_CloseAudio()
 {
+	pause = true;
 }
 
 void SDL_PauseAudio(int pause_on)
@@ -2515,7 +2516,7 @@ void SDL_PauseAudio(int pause_on)
 
 难点在于用户程序传入给`SDL_OpenAudio`的参数`desire`中的`callback`回调函数。首先明确一下这个回调函数的意义：SDL库会周期性调用这个回调函数，然后用户的回调函数实现就会把`len`长度的音频数据放到`stream`指向的内存区域里，因此SDL库访问`stream`就可以知道用户想要播放的音频数据了。
 
-那第一个问题就是周期性调用的周期是多少？首先通过[这篇文章](https://www.suninf.net/2023/01/audio-framerate-and-sample.html)了解一下`freq`，`samples`和`channels`是什么意思。看完文章后就能知道一次回调函数实质上就得到了一个音频帧。所以设调用回调函数的周期是$T$，单位是秒，则根据简单的小学数学知识，有：
+那第一个问题就是周期性调用的周期是多少？首先通过[这篇文章](https://www.suninf.net/2023/01/audio-framerate-and-sample.html)了解一下`freq`，`samples`和`channels`是什么意思。看完文章后就能知道一次回调函数实质上就得到了一个音频帧。所以设调用回调函数的周期是$T$，单位是秒，则根据简单的数学知识，有：
 
 $$
 \frac{1}{T} \cdot samples  = freq
@@ -2560,6 +2561,12 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
     frame = malloc(frame_size);
     return 0;
 }
+
+void SDL_CloseAudio()
+{
+    pause = true;
+    free(frame);
+}
 ```
 
 在尝试运行NPlayer时，发现了它所调用的vorbis可以检查出差劲的`fixedpt_div`的实现：好的实现一定是先乘再除的，不然如果先除后乘，因为C语言的除法是整除，那么一旦$A < B$，那直接就变成$0$了，小数部分就没了。
@@ -2575,4 +2582,313 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 ![[simplescreenrecorder-2025-08-15_00.11.55.mp4]]
 
 #### 让运行时环境支持C++全局对象的初始化
+
+单完成这个任务是非常简单的，教程已经说的很明白了，Newlib里已经定义了一个会调用C++的全局对象的构造函数的函数`__libc_init_array`了，所以在`$NAVY_HOME/libs/libos/src/crt0/crt0.c`调用`main`函数前调用`__libc_init_array`就可以了。
+
+在nanos-lite上正确的输入如下：
+```
+Test,8: Hello, Project-N!
+main,20: Hello world!
+~Test,12: Goodbye, Project-N!
+```
+
+#### 理解全局对象构造函数的调用过程
+
+首先我们可以看一下编译器编译出来的`main.o`的反汇编究竟长什么样。首先我们能够确定在它的.text段里肯定会有`main`函数的定义，然后会发现除了`main`之外还多了两个函数，猜测这可能会与全局变量`test`的初始化有关：
+
+```asm 
+00000044 <_Z41__static_initialization_and_destruction_0v>:
+  44:	ff010113          	addi	sp,sp,-16
+  48:	00112623          	sw	ra,12(sp)
+  4c:	00812423          	sw	s0,8(sp)
+  50:	01010413          	addi	s0,sp,16
+  54:	00000517          	auipc	a0,0x0
+  58:	00050513          	mv	a0,a0
+  5c:	00000097          	auipc	ra,0x0
+  60:	000080e7          	jalr	ra # 5c <_Z41__static_initialization_and_destruction_0v+0x18>
+  64:	00000617          	auipc	a2,0x0
+  68:	00060613          	mv	a2,a2
+  6c:	00000597          	auipc	a1,0x0
+  70:	00058593          	mv	a1,a1
+  74:	00000517          	auipc	a0,0x0
+  78:	00050513          	mv	a0,a0
+  7c:	00000097          	auipc	ra,0x0
+  80:	000080e7          	jalr	ra # 7c <_Z41__static_initialization_and_destruction_0v+0x38>
+  84:	00000013          	nop
+  88:	00c12083          	lw	ra,12(sp)
+  8c:	00812403          	lw	s0,8(sp)
+  90:	01010113          	addi	sp,sp,16
+  94:	00008067          	ret
+
+00000098 <_GLOBAL__sub_I_test>:
+  98:	ff010113          	addi	sp,sp,-16
+  9c:	00112623          	sw	ra,12(sp)
+  a0:	00812423          	sw	s0,8(sp)
+  a4:	01010413          	addi	s0,sp,16
+  a8:	00000097          	auipc	ra,0x0
+  ac:	000080e7          	jalr	ra # a8 <_GLOBAL__sub_I_test+0x10>
+  b0:	00c12083          	lw	ra,12(sp)
+  b4:	00812403          	lw	s0,8(sp)
+  b8:	01010113          	addi	sp,sp,16
+  bc:	00008067          	ret
+```
+
+接下来看链接后的产物`cpp-test-riscv32`的反汇编：
+
+```asm
+83000118 <_Z41__static_initialization_and_destruction_0v>:
+83000118:	ff010113          	addi	sp,sp,-16
+8300011c:	00112623          	sw	ra,12(sp)
+83000120:	00812423          	sw	s0,8(sp)
+83000124:	01010413          	addi	s0,sp,16
+83000128:	00009517          	auipc	a0,0x9
+8300012c:	77050513          	addi	a0,a0,1904 # 83009898 <test>
+83000130:	00000097          	auipc	ra,0x0
+83000134:	064080e7          	jalr	100(ra) # 83000194 <_ZN4TestC1Ev>
+83000138:	00009617          	auipc	a2,0x9
+8300013c:	76460613          	addi	a2,a2,1892 # 8300989c <__dso_handle>
+83000140:	00009597          	auipc	a1,0x9
+83000144:	75858593          	addi	a1,a1,1880 # 83009898 <test>
+83000148:	00000517          	auipc	a0,0x0
+8300014c:	09050513          	addi	a0,a0,144 # 830001d8 <_ZN4TestD1Ev>
+83000150:	00000097          	auipc	ra,0x0
+83000154:	164080e7          	jalr	356(ra) # 830002b4 <__cxa_atexit>
+83000158:	00000013          	nop
+8300015c:	00c12083          	lw	ra,12(sp)
+83000160:	00812403          	lw	s0,8(sp)
+83000164:	01010113          	addi	sp,sp,16
+83000168:	00008067          	ret
+
+8300016c <_GLOBAL__sub_I_test>:
+8300016c:	ff010113          	addi	sp,sp,-16
+83000170:	00112623          	sw	ra,12(sp)
+83000174:	00812423          	sw	s0,8(sp)
+83000178:	01010413          	addi	s0,sp,16
+8300017c:	00000097          	auipc	ra,0x0
+83000180:	f9c080e7          	jalr	-100(ra) # 83000118 <_Z41__static_initialization_and_destruction_0v>
+83000184:	00c12083          	lw	ra,12(sp)
+83000188:	00812403          	lw	s0,8(sp)
+8300018c:	01010113          	addi	sp,sp,16
+83000190:	00008067          	ret
+
+83000194 <_ZN4TestC1Ev>:
+83000194:	fe010113          	addi	sp,sp,-32
+83000198:	00112e23          	sw	ra,28(sp)
+8300019c:	00812c23          	sw	s0,24(sp)
+830001a0:	02010413          	addi	s0,sp,32
+830001a4:	fea42623          	sw	a0,-20(s0)
+830001a8:	00800613          	li	a2,8
+830001ac:	00006597          	auipc	a1,0x6
+830001b0:	0e858593          	addi	a1,a1,232 # 83006294 <__libc_init_array+0x94>
+830001b4:	00006517          	auipc	a0,0x6
+830001b8:	0e850513          	addi	a0,a0,232 # 8300629c <__libc_init_array+0x9c>
+830001bc:	00000097          	auipc	ra,0x0
+830001c0:	0a4080e7          	jalr	164(ra) # 83000260 <printf>
+830001c4:	00000013          	nop
+830001c8:	01c12083          	lw	ra,28(sp)
+830001cc:	01812403          	lw	s0,24(sp)
+830001d0:	02010113          	addi	sp,sp,32
+830001d4:	00008067          	ret
+
+830001d8 <_ZN4TestD1Ev>:
+830001d8:	fe010113          	addi	sp,sp,-32
+830001dc:	00112e23          	sw	ra,28(sp)
+830001e0:	00812c23          	sw	s0,24(sp)
+830001e4:	02010413          	addi	s0,sp,32
+830001e8:	fea42623          	sw	a0,-20(s0)
+830001ec:	00c00613          	li	a2,12
+830001f0:	00006597          	auipc	a1,0x6
+830001f4:	0c858593          	addi	a1,a1,200 # 830062b8 <__libc_init_array+0xb8>
+830001f8:	00006517          	auipc	a0,0x6
+830001fc:	0c850513          	addi	a0,a0,200 # 830062c0 <__libc_init_array+0xc0>
+83000200:	00000097          	auipc	ra,0x0
+83000204:	060080e7          	jalr	96(ra) # 83000260 <printf>
+83000208:	00000013          	nop
+8300020c:	01c12083          	lw	ra,28(sp)
+83000210:	01812403          	lw	s0,24(sp)
+83000214:	02010113          	addi	sp,sp,32
+83000218:	00008067          	ret
+```
+
+可以看到这里的逻辑是：首先`_GLOBAL__sub_I_test`调用了`_Z41__static_initialization_and_destruction_0v`这个函数，然后这个函数会用到`_ZN4TestC1Ev`和`_ZN4TestD1Ev`这两个函数。这两个函数看上去很有可能是构造函数与析构函数，因为他们都调用了`printf`函数。通过看ELF文件的二进制数据，结合传给`printf`的参数也证实了这一点：
+
+```hex
+00006290: 6780 0000 5465 7374 0000 0000 2573 2c25  g...Test....%s,%
+000062a0: 643a 2048 656c 6c6f 2c20 5072 6f6a 6563  d: Hello, Projec
+000062b0: 742d 4e21 0a00 0000 7e54 6573 7400 0000  t-N!....~Test...
+000062c0: 2573 2c25 643a 2047 6f6f 6462 7965 2c20  %s,%d: Goodbye, 
+000062d0: 5072 6f6a 6563 742d 4e21 0a00 6d61 696e  Project-N!..main
+```
+于是我们就可以知道调用了`_GLOBAL__sub_I_test`就可以确保调用了全局变量的构造函数并且注册全局变量的析构函数。也就是说这个函数应该就是教程中介绍的g++所包装出来的一个辅助函数。那么现在注意到这个符号的Bind属性，问题就来了：它是LOCAL的，这意味着Newlib之类的库是无法找到这个函数的：
+```
+   Num:    Value  Size Type    Bind   Vis      Ndx Name
+    43: 00000098    40 FUNC    LOCAL  DEFAULT   33 _GLOBAL__sub_I_test
+```
+所以，链接器就会把这个辅助函数的地址填写到一个.init_array的节中：
+
+```asm
+Disassembly of section .init_array:
+
+83008ffc <__init_array_start>:
+83008ffc:	016c                	.insn	2, 0x016c
+83008ffe:	8300                	.insn	2, 0x8300
+```
+
+这里反汇编程序无法识别这个指令，这很正常，因为这实际上保存的是`_GLOBAL__sub_I_test`函数的地址，因为是小端机器，所以拼一下就是`0x8300016c`这个地址了。同时链接器还定义了这么一些符号：
+
+```
+   147: 83009000     0 NOTYPE  LOCAL  DEFAULT    4 __init_array_end
+   148: 83008ffc     0 NOTYPE  LOCAL  DEFAULT    4 __preinit_array_end
+   149: 83008ffc     0 NOTYPE  LOCAL  DEFAULT    4 __init_array_start
+   150: 83008ffc     0 NOTYPE  LOCAL  DEFAULT    4 __preinit_array_start
+```
+
+于是，这些符号就被Newlib用于遍历辅助函数进而调用全局变量的构造函数了：
+
+```c title="$NAVY_HOME/libs/libc/src/misc/init.c" {27-29}
+#ifdef HAVE_INITFINI_ARRAY
+
+/* These magic symbols are provided by the linker.  */
+extern void (*__preinit_array_start[])(void) __attribute__((weak));
+extern void (*__preinit_array_end[])(void) __attribute__((weak));
+extern void (*__init_array_start[])(void) __attribute__((weak));
+extern void (*__init_array_end[])(void) __attribute__((weak));
+
+#ifdef HAVE_INIT_FINI
+extern void _init(void);
+#endif
+
+/* Iterate over all the init routines.  */
+void __libc_init_array(void)
+{
+    size_t count;
+    size_t i;
+
+    count = __preinit_array_end - __preinit_array_start;
+    for (i = 0; i < count; i++)
+        __preinit_array_start[i]();
+
+#ifdef HAVE_INIT_FINI
+    _init();
+#endif
+
+    count = __init_array_end - __init_array_start;
+    for (i = 0; i < count; i++)
+        __init_array_start[i]();
+}
+#endif
+```
+
+#### 运行带音乐和音效的仙剑奇侠传
+
+比如这个调用链条是这样的：
+
+A -> B -> A -> B -> ...
+
+那么只需要在B里面添加一个标志，若标志为1则表示不可继续执行。那么在我们的实现中在其第一次运行时标为1，则在第二次时就不可以继续运行下去，便防止了重入问题。虽然可以在nanos-lite上跑，但是实在是太卡了，所以还是在native上演示一下
+
+![[simplescreenrecorder-2025-08-16_20.03.25.mp4]]
+
+#### 运行带音效的Flappy Bird
+
+首先实现一下`SDL_LoadWAV`，这需要我们看看教程上的网站稍微了解了WAV文件格式。因为本课程中的`wav`文件都是非压缩的PCM格式，所以我们甚至只需要从文件的第44字节开始读到文件尾作为音频数据，然后再读一下频率、通道数和其他一些参数即可。不过我在这里为了保险还是做了很多的`assert`：
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/audio.c"
+SDL_AudioSpec *SDL_LoadWAV(const char *file, SDL_AudioSpec *spec,
+                           uint8_t **audio_buf, uint32_t *audio_len)
+{
+    FILE *f = fopen(file, "rb");
+    char type_buf[10] = {0};
+
+    fread(type_buf, 1, 4, f);
+    assert(strcmp(type_buf, "RIFF") == 0);
+
+    uint32_t data_size = 0;
+    fread(&data_size, 4, 1, f);
+    data_size -= 36;
+
+    memset(type_buf, 0, 10);
+    fread(type_buf, 1, 4, f);
+    assert(strcmp(type_buf, "WAVE") == 0);
+
+    long chunk1_off = 12;
+    long chunk2_off = 36;
+
+    memset(type_buf, 0, 10);
+    fread(type_buf, 1, 4, f);
+    assert(strcmp(type_buf, "fmt ") == 0);
+
+    memset(type_buf, 0, 10);
+    fseek(f, 20, SEEK_SET);
+    uint16_t audio_format;
+    fread(&audio_format, 2, 1, f);
+    assert(audio_format == 1);
+
+    uint16_t channels;
+    fread(&channels, 2, 1, f);
+    spec->channels = channels;
+
+    uint32_t freq;
+    fread(&freq, 4, 1, f);
+    spec->freq = freq;
+
+    fseek(f, 6, SEEK_CUR);
+    uint16_t bits_per_sample;
+    fread(&bits_per_sample, 2, 1, f);
+    if (bits_per_sample == 8)
+        spec->format = AUDIO_S16;
+    else if (bits_per_sample == 16)
+        spec->format = AUDIO_U8;
+    else
+        assert(0);
+    spec->samples = 1024;
+
+    fseek(f, chunk2_off, SEEK_SET);
+    fread(type_buf, 1, 4, f);
+    assert(strcmp(type_buf, "data") == 0);
+
+    fseek(f, 44, SEEK_SET);
+    uint8_t *data_buf = malloc(data_size);
+    fread(data_buf, 1, data_size, f);
+    *audio_buf = data_buf;
+    *audio_len = data_size;
+    return spec;
+}
+```
+
+需要注意的是函数参数`uint8_t **audio_buf`的意思，不是让我们往里面传数据，而是自己申请内存把音频数据放里面，然后把`*audio_buf`这个指针直接改了。
+
+接着是处理`SDL_MixAudio`的实现，具体而言就是把源音频先做一个与音量相关的比例调整（乘法），再和目标音频做加法。因为要处理溢出问题，所以我这里直接用`int`去存储中间值，就能很好判断溢出了。不过我这里只能处理16位有符号格式的音频，因为我不清楚单靠这个函数如何分辨出指针指向的音频是什么格式的。
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/audio.c"
+void SDL_MixAudio(uint8_t *dst, uint8_t *src, uint32_t len, int volume)
+{
+    assert(len % 2 == 0);
+    int16_t *ddst = (int16_t *)dst;
+    int16_t *ssrc = (int16_t *)src;
+    for (size_t i = 0; i < len / 2; i++)
+    {
+        int ssrc_vol = (int)ssrc[i] * (int)volume / (int)SDL_MIX_MAXVOLUME;
+        int mixed = (int)ddst[i] + ssrc_vol;
+        uint16_t val;
+        if (mixed > 32767)
+            val = 32767;
+        else if (mixed < -32768)
+            val = -32768;
+        else
+            val = mixed;
+        ddst[i] = val;
+    }
+}
+```
+
+在这里我选择用native上运行的nanos-lite上进行演示：
+
+![[simplescreenrecorder-2025-08-16_23.08.31.mp4]]
+
+#### 实现可自由开关的DiffTest
+
+之前支持异常的DiffTest就没做明白，这个就实在是没办法做，因为没法测。
+
+#### 在NEMU中实现快照
 
