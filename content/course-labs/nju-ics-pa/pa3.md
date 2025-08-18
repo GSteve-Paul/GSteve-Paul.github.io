@@ -5,7 +5,7 @@ tags:
   - 系统调用
   - 文件系统
 ---
-虽然更复杂，需要思考的内容比PA2要更多（主要是因为我没有书去学习理论知识，在做这个实验之前都没听说过系统调用和中断/异常的知识），但是PA3的代码量相比PA2有所减少。
+虽然PA3更复杂，需要思考的内容比PA2要更多（主要是因为我没有书去学习理论知识，在做这个实验之前都没听说过系统调用和中断/异常的知识），但是PA3的代码量相比PA2有所减少。
 
 ## 阶段1
 
@@ -2891,4 +2891,178 @@ void SDL_MixAudio(uint8_t *dst, uint8_t *src, uint32_t len, int volume)
 之前支持异常的DiffTest就没做明白，这个就实在是没办法做，因为没法测。
 
 #### 在NEMU中实现快照
+
+NEMU的状态首先包含NEMU模拟器的内存数据、各个寄存器（GPR,PC,CSR）的数据以及`nemu_state`，然后就是NEMU的这些设备的状态，将它们当前的状态存放在文件中即可。这个任务看似不难，实则并不简单，这是因为设备的状态是很复杂的，特别是对于声卡而言，它会有一个SDL不断触发的回调函数，而这一状态是很难在NEMU上记录下来的。因此我只能实现一个大概能用的快照功能，它并不完美：
+
+```c title="$NEMU_HOME/src/monitor/sdb/sdb.c"
+static int cmd_save(char *args)
+{
+    char *path = strtok(NULL, " ");
+    if (path == NULL)
+    {
+        printf("Invalid parameters! Need file path here.\n");
+        return 0;
+    }
+    FILE *f = fopen(path, "wb");
+    int _;
+    // save nemu_state
+    _ = fwrite(&nemu_state, sizeof(nemu_state), 1, f);
+    // save cpu
+    _ = fwrite(&cpu, sizeof(cpu), 1, f);
+    // save memory
+    _ = fwrite(guest_to_host(RESET_VECTOR), 1, CONFIG_MSIZE, f);
+    // save device
+    void save_device(FILE *);
+    save_device(f);
+    fclose(f);
+    assert(_);
+    return 0;
+}
+```
+
+加载部分要注意audio不能从保存快照照抄，因为它存在一个初始化的过程，所以还要多添加一个变量`inited`指示是否初始化过。而vga也有一个同步到屏幕的过程，同理也要添加。不过这里我不多做赘述，给出audio的实现即可：
+
+```c title="$NEMU_HOME/src/device/audio.c"
+void save_audio(FILE *f)
+{
+    int _;
+    _ = fwrite(audio_base, 4, nr_reg, f);
+    _ = fwrite(sbuf, 1, CONFIG_SB_SIZE, f);
+    _ = fwrite(&buf_l, sizeof(buf_l), 1, f);
+    _ = fwrite(&buf_r, sizeof(buf_r), 1, f);
+    _ = fwrite(&inited, sizeof(inited), 1, f);
+    assert(_);
+}
+
+void load_audio(FILE *f)
+{
+    int _;
+    _ = fread(audio_base, 4, nr_reg, f);
+    _ = fread(sbuf, 1, CONFIG_SB_SIZE, f);
+    _ = fread(&buf_l, sizeof(buf_l), 1, f);
+    _ = fread(&buf_r, sizeof(buf_r), 1, f);
+    _ = fread(&inited, sizeof(inited), 1, f);
+    if (inited)
+        init_sound();
+    assert(_);
+}
+```
+
+而对于其他的设备，只需要保存其在内存中的一些寄存器映射及其状态即可。
+
+#### 可以运行其它程序的开机菜单
+
+`SYS_execve`系统调用就是启动另一个程序的执行，因此我们需要用`naive_uload`把新程序加载到内存中去，并让PC指向这个新程序的入口。显然，通过`naive_uload`进入新程序之后，新程序的退出会依靠`SYS_exit`，而这在当前的实现中会导致NEMU直接停机，因而这个系统调用并不会返回到当前程序。
+
+实现很简单，就不用多做赘述了：
+
+```c title="nanos-lite/src/syscall.c"
+static int sys_execve(Context *c, uintptr_t *a)
+{
+    const char *pathname = (const char *)a[1];
+    char **argv __attribute__((unused)) = (char **)a[2];
+    char **envp __attribute__((unused)) = (char **)a[3];
+#ifdef CONFIG_STRACE
+    printf("%s\n", pathname);
+#endif
+    void naive_uload(PCB * pcb, const char *filename);
+    naive_uload(NULL, pathname);
+    return 0;
+}
+```
+
+#### 展示你的批处理系统
+
+稍微修改一下`SYS_exit`的实现即可：
+```c title="nanos-lite/src/syscall.c"
+__attribute__((unused)) char path[] = "/bin/menu";
+switch (a[0])
+{
+case SYS_yield:
+	yield();
+	c->GPRx = 0;
+	break;
+case SYS_exit:
+#ifdef CONFIG_STRACE
+	printf("%d\n", a[1]);
+#endif
+	a[1] = (uintptr_t)path;
+	c->GPRx = sys_execve(c, a);
+	// halt(a[1]);
+	break;
+...
+```
+
+#### 展示你的批处理系统(2)
+
+因为之前我做了[[pa3#实现内建的echo命令|echo命令的实现]]，所以这个问题就变得很简单了——其实就是识别不出来命令是什么内建命令的时候，就把它当作是执行程序即可。
+
+```c title="$NAVY_HOME/apps/nterm/src/builtin-sh.cpp" {16-19}
+static void sh_handle_cmd(const char *cmd)
+{
+    char *command = (char *)cmd;
+    char *first = strtok(command, " \n");
+    size_t arrlen = sizeof(cmd_table) / sizeof(cmd_table[0]);
+    char *args = first + strlen(first) + 1;
+    int i;
+    for (i = 0; i < arrlen; i++)
+    {
+        if (strcmp(first, cmd_table[i].name) == 0)
+        {
+            cmd_table[i].handler(args);
+            break;
+        }
+    }
+    if (i == arrlen)
+    {
+        execve(first, NULL, NULL);
+    }
+}
+```
+
+#### 为NTerm中的內建Shell添加环境变量的支持
+
+还是很简单，稍微修改一下上述的代码中执行程序的地方就可以了：
+
+```c title="$NAVY_HOME/apps/nterm/src/builtin-sh.cpp"
+static void sh_handle_cmd(const char *cmd)
+{
+    char *command = (char *)cmd;
+    char *first = strtok(command, " \n");
+    size_t arrlen = sizeof(cmd_table) / sizeof(cmd_table[0]);
+    char *args = first + strlen(first) + 1;
+    int i;
+    for (i = 0; i < arrlen; i++)
+    {
+        if (strcmp(first, cmd_table[i].name) == 0)
+        {
+            cmd_table[i].handler(args);
+            break;
+        }
+    }
+    if (i == arrlen)
+    {
+        setenv("PATH", "/bin", 0);
+        execvp(first, NULL);
+    }
+}
+```
+
+#### 终极拷问
+
+新的认识：终端从键盘获取到输入后，发现以`./`开头，于是在当前目录下找到hello程序，并fork出来一个新进程，在新进程上用execve执行这个新程序。
+
+#### 添加开机音乐
+
+这个任务很简单啊，从nplayer那边随便抄点代码过来就可以了。我用的是Windows Vista的开机音乐，演示如下：
+
+![[simplescreenrecorder-2025-08-18_17.04.51.mp4]]
+
+## 必答题 - 理解计算机系统
+
+前三个已经回答过了这里就不多做赘述，重点讲一下第四个：
+
+调用库函数`fread`，这实际上会在libos中导致调用一个系统调用`SYS_read`，这个系统调用被编译成一个`ecall`指令，当NEMU执行这个指令的时候就会跳转到异常处理入口，开始处理这个异常，接着被识别为Nanos-lite的系统调用而被处理，进而把文件中的数据复制到要读取到的buffer中，接着退出事件处理，恢复上下文回到程序。
+
+将像素信息更新到屏幕上其实就是系统调用的过程中，多了一步操作设备的过程。
 
