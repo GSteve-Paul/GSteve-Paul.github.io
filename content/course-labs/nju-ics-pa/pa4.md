@@ -1492,6 +1492,1145 @@ Context *schedule(Context *prev)
 
 ![[simplescreenrecorder-2025-08-24_22.56.58.mp4]]
 
+#### 编译ONScripter到Linux native
+
+在我的电脑需要额外安装一些软件，比如：
+
+```sh
+sudo apt install libsdl-mixer1.2-dev libsdl-ttf2.0-dev
+```
+
+其他的按照教程走就很容易了。
+
+#### 缓存和字体光栅化
+
+因为这个函数是对字体库的一个字符进行光栅化，所以调色盘的内容和传入的`fg`和`bg`是相关的，因此代码这里在生成了一个`fg`和`bg`对应的调色盘之后就会保存下来，下次再需要生成的时候会判断是不是之前的`fg`和`bg`，如果是，那么就沿用上次的，否则就重新生成。如果多次用同样的`fg`和`bg`参数调用该函数应该会有一定的性能提升，当然了如果`fg`和`bg`老是在变就没啥用。
+
+#### 运行ONScripter
+
+##### 完善miniSDL库
+
+在timer.c里面，这个计时器的回调函数和PA3里面填充音频数据的回调函数实现方法差不太多，都得用一个辅助函数。而timer.c和audio.c的区别在于这里的计时器可能会有多个，所以在实现上我们可以开一个合适的固定大小的计时器信息数组，每次分配的时候就分配可用的下标最小的那一个。这样一来似乎每次跑回调函数的时候都需要遍历整个数组，效率可能比较低下，因而实际上我们可以维护一个被分配的最大下标，这样就可以仅遍历到最大下标即可。
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/timer.c"
+#define SDL_TIMER_RECORD_MAX 1024
+
+typedef struct
+{
+    bool enabled;
+    uint32_t last_time;
+    uint32_t interval;
+    void *param;
+    SDL_NewTimerCallback callback;
+} SDL_Timer_Record;
+
+static SDL_Timer_Record tr[SDL_TIMER_RECORD_MAX];
+static int tr_max = 0;
+
+void TimerCallbackHelper()
+{
+    static bool flag = false;
+    if (flag)
+        return;
+    flag = true;
+    for (int i = 1; i <= tr_max; i++)
+    {
+        if (!tr[i].enabled)
+            continue;
+        uint32_t before = SDL_GetTicks();
+        if (before - tr[i].last_time < tr[i].interval)
+            continue;
+        uint32_t ret = tr[i].callback(tr[i].interval, tr[i].param);
+        tr[i].last_time = before;
+        tr[i].interval = ret;
+    }
+    flag = false;
+}
+
+SDL_TimerID SDL_AddTimer(uint32_t interval, SDL_NewTimerCallback callback,
+                         void *param)
+{
+    int id = 0;
+    for (int i = 1; i <= tr_max; i++)
+    {
+        if (!tr[i].enabled)
+        {
+            id = i;
+            break;
+        }
+    }
+    if (id == 0)
+    {
+        if (tr_max + 1 >= SDL_TIMER_RECORD_MAX)
+        {
+            assert(0);
+            return 0;
+        }
+        id = ++tr_max;
+    }
+    tr[id] =
+        (SDL_Timer_Record){true, SDL_GetTicks(), interval, param, callback};
+    return (void *)(uintptr_t)id;
+}
+
+int SDL_RemoveTimer(SDL_TimerID id)
+{
+    int int_id = (int)(uintptr_t)id;
+    tr[int_id].enabled = false;
+    return 1;
+}
+```
+
+感觉框架代码中给出的`SDL_TimerId`是`void *`类型的感觉有点奇怪。于是我就去看了下源码，看了SDL1.2的源码后发现是官方的实现方法是链表，因而官方的`SDL_TimerId`就是一个指向链表里的元素的指针。看来这里教程是想让我们的实现更加自由。
+
+接着是完善一下event.c，之前我们只有键盘事件，而现在会有其他用户自定义的事件了，因而我们要用一个队列来缓冲一下没有处理的事件。在我的实现中我用的是环形队列，这在之前已经写过好多次了，没有什么难度了。在实现完这个队列后，我们也要把之前的获取键盘事件的操作添加到队列中去，这样方便用统一的方式处理各类事件。
+
+需要注意的是，`SDL_PeepEvents`的`SDL_GETEVENT`要求是找到符合`mask`（阅读`SDL_EVENTMASK`宏，会知道`mask`其实就是一个关于`SDL_Event.type`的bitset）的事件，写入到`ev`中并删除。因为有用`mask`过滤的过程，所以不一定是开头第一个事件就正好是，因而在做了`SDL_GETEVENT`后，需要把环形队列中开头到被删除的事件之间的事件整体往后挪一下，不然会造成空间的浪费，也容易导致后续取到一个之前取过的事件。
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/event.c"
+#define SDL_EVENTS_MAX 1024
+SDL_Event evt[SDL_EVENTS_MAX];
+static int evt_l = 0, evt_r = 0, evt_len = 0;
+
+void AudioCallbackHelper();
+void TimerCallbackHelper();
+
+static int pull_keyboard_event()
+{
+    SDL_Event ev;
+    char buf[100];
+    int rd = NDL_PollEvent(buf, sizeof(buf) / sizeof(char));
+    if (rd == 0)
+        return 0;
+    if (buf[0] == 'k')
+    {
+        switch (buf[1])
+        {
+        case 'd':
+            ev.key.type = SDL_KEYDOWN;
+            break;
+        case 'u':
+            ev.key.type = SDL_KEYUP;
+            break;
+        default:
+            assert(0);
+        }
+        char *event_key_name = buf + 3;
+        buf[strlen(buf) - 1] = '\0';
+        for (int i = 0; i < sizeof(keyname) / sizeof(char *); i++)
+        {
+            if (strcmp(keyname[i], event_key_name) == 0)
+            {
+                ev.key.keysym.sym = i;
+                break;
+            }
+        }
+        key_state[ev.key.keysym.sym] = (ev.key.type == SDL_KEYDOWN);
+    }
+    else
+    {
+        assert(0);
+    }
+    SDL_PushEvent(&ev);
+    return 1;
+}
+
+int pop_event(SDL_Event *ev)
+{
+    if (evt_len == 0)
+        return 0;
+    assert(evt_len > 0);
+    *ev = evt[evt_l];
+    evt_l = (evt_l + 1) % SDL_EVENTS_MAX;
+    evt_len--;
+    assert(evt_len >= 0);
+    return 1;
+}
+
+int SDL_PushEvent(SDL_Event *ev)
+{
+    TimerCallbackHelper();
+    AudioCallbackHelper();
+
+    evt[evt_r] = *ev;
+    evt_r = (evt_r + 1) % SDL_EVENTS_MAX;
+    evt_len++;
+    assert(evt_len <= SDL_EVENTS_MAX);
+    return 1;
+}
+
+int SDL_PollEvent(SDL_Event *ev)
+{
+    TimerCallbackHelper();
+    AudioCallbackHelper();
+
+    pull_keyboard_event();
+    return pop_event(ev);
+}
+
+int SDL_WaitEvent(SDL_Event *event)
+{
+    TimerCallbackHelper();
+    AudioCallbackHelper();
+
+    while (evt_len == 0)
+    {
+        pull_keyboard_event();
+    }
+    return pop_event(event);
+}
+
+int SDL_PeepEvents(SDL_Event *ev, int numevents, int action, uint32_t mask)
+{
+    TimerCallbackHelper();
+    AudioCallbackHelper();
+
+    assert(numevents == 1);
+    assert(action == SDL_GETEVENT);
+
+    int used = 0;
+    switch (action)
+    {
+    case SDL_GETEVENT:
+        for (int ptr = evt_l; ptr != evt_r && used < numevents;
+             ptr = (ptr + 1) % SDL_EVENTS_MAX)
+        {
+            if ((SDL_EVENTMASK(evt[ptr].type) & mask) == 0)
+                continue;
+            ev[used++] = evt[ptr];
+            // remove evt[ptr]
+            if (ptr > evt_l)
+            {
+                for (int i = ptr; i > evt_l; i--)
+                    evt[i] = evt[(i - 1 + SDL_EVENTS_MAX) % SDL_EVENTS_MAX];
+            }
+            else if (ptr < evt_l)
+            {
+                for (int i = ptr; i >= 0; i--)
+                    evt[i] = evt[(i - 1 + SDL_EVENTS_MAX) % SDL_EVENTS_MAX];
+                for (int i = SDL_EVENTS_MAX - 1; i > evt_l; i--)
+                    evt[i] = evt[(i - 1 + SDL_EVENTS_MAX) % SDL_EVENTS_MAX];
+            }
+            evt_len--;
+            evt_l++;
+        }
+        break;
+    default:
+        assert(0);
+    }
+    return used;
+}
+```
+
+最后是file.c。这是最难实现的，因为在网上找不到SDL1.2的关于`SDL_RWFromFile`和`SDL_RWFromMem`的文档，特别是`SDL_RWops`的各个函数的具体语义……只能靠SDL2的文档进行合理猜测了🤣。这个地方其实就是把普通文件和内存文件都抽象成SDL的抽象文件，然后你给出这个抽象文件的读取、写入等一系列函数，使得这个抽象文件能用就可以了。
+
+对于`SDL_RWFromFile`，就是让你把普通文件抽象成SDL的抽象文件。这只需要我们用glibc的`fopen`得到`FILE *`，然后用glibc里面的比如`fseek`，`fread`实现那一堆回调函数就可以了。那堆回调函数的语义跟glibc的差不太多，但还是有所不同，比如SDL的`seek`需要返回文件偏移量，而glibc的`fseek`可不会，所以要用`ftell`得到文件偏移量才行。
+
+而对于`SDL_RWFromMem`，就是让你把一段连续内存抽象成SDL的抽象文件。教程里说过可以用glibc的`fmemopen`把这一段内存装化为`FILE *`来用，因此在调用`fmemopen`后基本上和`SDL_RWFromFile`差不多的。
+
+```c title="$NAVY_HOME/libs/libminiSDL/src/file.c"
+static int64_t seek(struct SDL_RWops *f, int64_t offset, int whence)
+{
+    fseek(f->fp, offset, whence);
+    return ftell(f->fp);
+}
+static size_t read(struct SDL_RWops *f, void *buf, size_t size, size_t nmemb)
+{
+    return fread(buf, size, nmemb, f->fp);
+}
+static size_t write(struct SDL_RWops *f, const void *buf, size_t size,
+                    size_t nmemb)
+{
+    return fwrite(buf, size, nmemb, f->fp);
+}
+static int close(struct SDL_RWops *f)
+{
+    free(f);
+    return fclose(f->fp);
+}
+static int64_t _size(struct SDL_RWops *f)
+{
+    return f->mem.size;
+}
+
+SDL_RWops *SDL_RWFromFile(const char *filename, const char *mode)
+{
+    SDL_RWops *ret = malloc(sizeof(SDL_RWops));
+    FILE *f = fopen(filename, mode);
+    fseek(f, 0, SEEK_END);
+    int size_val = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    *ret = (SDL_RWops){.size = _size,
+                       .seek = seek,
+                       .read = read,
+                       .write = write,
+                       .close = close,
+                       .type = RW_TYPE_FILE,
+                       .fp = f,
+                       .mem = {.size = size_val}};
+    return ret;
+}
+
+SDL_RWops *SDL_RWFromMem(void *mem, int size)
+{
+    SDL_RWops *ret = malloc(sizeof(SDL_RWops));
+    FILE *f = fmemopen(mem, size, "r+");
+    *ret = (SDL_RWops){.size = _size,
+                       .seek = seek,
+                       .read = read,
+                       .write = write,
+                       .close = close,
+                       .type = RW_TYPE_MEM,
+                       .fp = f,
+                       .mem = {.size = size, .base = mem}};
+    return ret;
+}
+```
+
+##### 完善SDL_image库
+
+`IMG_Load_RW`实际上实现很简单，和`IMG_Load`差不太多：
+
+```c title="$NAVY_HOME/libs/libSDL_image/src/image.c"
+SDL_Surface *IMG_Load_RW(SDL_RWops *src, int freesrc)
+{
+    assert(src->type == RW_TYPE_MEM);
+    assert(freesrc == 0);
+    size_t size_val = src->size(src);
+    uint8_t *buf = (uint8_t *)malloc(size_val);
+    src->seek(src, 0, RW_SEEK_SET);
+    src->read(src, buf, sizeof(*buf), size_val);
+    return STBIMG_LoadFromMemory(buf, size_val);
+}
+```
+
+而实现`IMG_isPNG`则需要知道PNG格式的图片的魔数，这个[维基百科](https://en.wikipedia.org/wiki/PNG)上有写。
+
+```c title="$NAVY_HOME/libs/libSDL_image/src/image.c"
+int IMG_isPNG(SDL_RWops *src)
+{
+    src->seek(src, 0, RW_SEEK_SET);
+    uint8_t buf[8];
+    uint8_t correct[8] = {0x89, 0x50, 0x4E, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+    src->read(src, buf, sizeof(*buf), 8);
+    return memcmp(buf, correct, 8) == 0;
+}
+```
+这样，现在就可以在Navy native上运行ONScripter了：
+
+![[Pasted image 20250827194955.png]]
+#### 在ONScripter中播放BGM
+
+显然，你要去实现上面的那些API，并且还要实现`Mix_OpenAudio`和`Mix_CloseAudio`两个函数。说实话SDL的文档并不是那么易懂，还是来简要地梳理一下吧：首先`Mix_OpenAudio`和`Mix_CloseAudio`是用来调用`SDL_OpenAudio`和`SDL_CloseAudio`的，所以它们是用来注册音频的回调函数的，这非常重要，不然就播不出来声音。而`Mix_PlayMusic`是为回调函数里的声音提供声音来源信息的，而这个信息是从`Mix_LoadMUS_RW`所打开的音频文件所得来的。因此回调函数里面就是根据`Mix_PlayMusic`的声音来源信息解码音频，进而把声音信息塞进`stream`中的。具体实现如下：
+
+```c title="$NAVY_HOME/libs/libSDL_mixer/src/mixer.c"
+static SDL_AudioSpec spec;
+
+static Mix_Music *cur_music = NULL;
+static int music_volume = MIX_MAX_VOLUME;
+static int music_loops = 0;
+static bool music_stopped = true;
+
+static uint8_t *frame = NULL;
+
+static void callback(void *userdata, uint8_t *stream, int len)
+{
+    memset(stream, 0, len);
+    if (!music_stopped)
+    {
+        int samples_per_channel =
+            stb_vorbis_get_samples_short_interleaved((stb_vorbis *)cur_music,
+                                                     spec.channels,
+                                                     (void *)frame,
+                                                     len / sizeof(int16_t));
+        int nbyte = samples_per_channel * spec.channels * (spec.format / 8);
+        SDL_MixAudio(stream, frame, nbyte, music_volume);
+    }
+}
+
+
+int Mix_OpenAudio(int frequency, uint16_t format, int channels, int chunksize)
+{
+    spec = (SDL_AudioSpec){.freq = frequency,
+                           .format = format,
+                           .channels = channels,
+                           .samples = chunksize / (format / 8) / channels,
+                           .callback = callback,
+                           .size = chunksize,
+                           .userdata = NULL};
+    frame = malloc(chunksize);
+    SDL_OpenAudio(&spec, NULL);
+    SDL_PauseAudio(false);
+    return 0;
+}
+
+void Mix_CloseAudio()
+{
+    SDL_CloseAudio();
+}
+
+Mix_Music *Mix_LoadMUS_RW(SDL_RWops *src)
+{
+    size_t size_val = src->size(src);
+    uint8_t *buf = malloc(size_val);
+    src->seek(src, 0, RW_SEEK_SET);
+    src->read(src, buf, sizeof(*buf), size_val);
+    int error;
+    return (Mix_Music *)stb_vorbis_open_memory(buf, size_val, &error, NULL);
+}
+
+void Mix_FreeMusic(Mix_Music *music)
+{
+    if (music == cur_music)
+        music_stopped = true;
+    stb_vorbis_close((stb_vorbis *)music);
+}
+
+int Mix_PlayMusic(Mix_Music *music, int loops)
+{
+    cur_music = music;
+    music_loops = loops;
+    music_stopped = false;
+    return 0;
+}
+
+int Mix_VolumeMusic(int volume)
+{
+    int old_volume = music_volume;
+    music_volume = volume;
+    return old_volume;
+}
+
+int Mix_HaltMusic()
+{
+    music_stopped = true;
+    return 0;
+}
+
+int Mix_PlayingMusic()
+{
+    return !music_stopped;
+}
+```
+
+然后你可能会发现你得按一个键才能播一会儿声音，这是因为ONScripter往往在`SDL_WaitEvent`里面忙等。所以在SDL_WaitEvent的循环里也添上回调函数的辅助调用函数即可，而且这样可以解决之前需要按多次键盘才能让游戏播放下一页的问题。
+
+#### 在ONScripter中实现BGM的自动重放
+
+这个实现起来很舒服啊，至少你知道你要干什么，之前看SDL2的文档猜SDL1.2的函数的语义可并不这么有意思。简而言之就是，`loops`参数代表会重复播放多少次（如果是0，就是直播1次；如果是1，就是播2次）。所以小改一下回调函数，在播完一次后检测是否可以再播，然后用`stb_vorbis_seek_start`复位即可。
+
+```c title="$NAVY_HOME/libs/libSDL_mixer/src/mixer.c"
+static int64_t music_loops = 0;
+
+...
+
+static void callback(void *userdata, uint8_t *stream, int len)
+{
+    memset(stream, 0, len);
+    if (!music_stopped)
+    {
+        int samples_per_channel =
+            stb_vorbis_get_samples_short_interleaved((stb_vorbis *)cur_music,
+                                                     spec.channels,
+                                                     (void *)frame,
+                                                     len / sizeof(int16_t));
+        if (samples_per_channel == 0)
+        {
+            if (music_loops != 0)
+            {
+                music_loops--;
+                stb_vorbis_seek_start((stb_vorbis *)cur_music);
+                samples_per_channel = stb_vorbis_get_samples_short_interleaved(
+                    (stb_vorbis *)cur_music, spec.channels, (void *)frame,
+                    len / sizeof(int16_t));
+            }
+        }
+        int nbyte = samples_per_channel * spec.channels * (spec.format / 8);
+        SDL_MixAudio(stream, frame, nbyte, music_volume);
+    }
+}
+```
+
+演示如下，这BGM还挺好听的：
+
+![[simplescreenrecorder-2025-08-27_23.12.24.mp4]]
+
+#### 在ONScripter中播放音效
+
+首先解释一下这里的播放的音效和播放的音乐的区别：音乐就是游戏的BGM，它一直存在，在回调函数中肯定是要考虑它的音频数据的；而SDL_mixer里有多个通道（channel，我更想把它说成音轨），音效的声音数据（chunk）就可以放在某个音轨上，让某一个音轨播放这段声音数据。最终回调函数里将会是音乐+各个音轨的声音的混合。弄明白了这一点，就能够实现这些API了。
+
+这里需要我们注意一些API的文档，比如`Mix_LoadWAV_RW`，它并不一定是只读取`WAV`格式的音乐文件，而是如同文档里所说的，“Load a supported audio format into a chunk.”。而我们目前支持ogg格式的音频文件，所以可以简单地用vorbis库加载一下就行。
+
+由于这里的通道和之前BGM在回调函数中做的事情比较类似，所以可以照着写一个即可。不过如果这里的某个通道把自己的音乐播放完了，就应该把自己设置成空闲状态，否则可能会出现有时候播不出来声音的问题。
+
+我的实现如下，可能会有一点小问题，但是总体大问题还是没有的：
+
+```c title="$NAVY_HOME/libs/libSDL_mixer/include/SDL_mixer.h"
+typedef struct
+{
+    void *v;
+    int volume;
+    int64_t loops;
+} Mix_Music;
+
+typedef struct
+{
+    void *v;
+    int64_t loops;
+} Mix_Chunk;
+```
+
+```c title="$NAVY_HOME/libs/libSDL_mixer/src/mixer.c"
+static SDL_AudioSpec spec;
+
+static Mix_Music *cur_music = NULL;
+
+#define SDL_CHANNEL_MAX 128
+
+typedef struct
+{
+    Mix_Chunk *chunk;
+    int64_t loops;
+    int volume;
+    bool paused;
+} Mix_Channel;
+
+static void (*channel_finished_callback)(int channel);
+static void call_callback(int channel)
+{
+    if (channel_finished_callback != NULL)
+        channel_finished_callback(channel);
+}
+
+static Mix_Channel channels[SDL_CHANNEL_MAX];
+static int channel_num = 8;
+
+static uint8_t *frame = NULL;
+
+static int play_audio(uint8_t *stream, int len, stb_vorbis *v, int64_t *loops,
+                      int volume)
+{
+    int samples_per_channel =
+        stb_vorbis_get_samples_short_interleaved(v, spec.channels,
+                                                 (void *)frame,
+                                                 len / sizeof(int16_t));
+    if (samples_per_channel == 0)
+    {
+        if (*loops != 0)
+        {
+            (*loops)--;
+            stb_vorbis_seek_start(v);
+            samples_per_channel =
+                stb_vorbis_get_samples_short_interleaved(v, spec.channels,
+                                                         (void *)frame,
+                                                         len / sizeof(int16_t));
+        }
+    }
+    int nbyte = samples_per_channel * spec.channels * (spec.format / 8);
+    SDL_MixAudio(stream, frame, nbyte, volume);
+    return nbyte;
+}
+
+static void callback(void *userdata, uint8_t *stream, int len)
+{
+    memset(stream, 0, len);
+    if (Mix_PlayingMusic())
+    {
+        play_audio(stream, len, cur_music->v, &cur_music->loops,
+                   cur_music->volume);
+    }
+    for (int i = 0; i < channel_num; i++)
+    {
+        if (channels[i].paused)
+            continue;
+        if (channels[i].chunk == NULL)
+            continue;
+        int nbyte = play_audio(stream, len, channels[i].chunk->v,
+                               &channels[i].loops, channels[i].volume);
+        if (nbyte == 0 && channels[i].loops == 0)
+        {
+            channels[i].chunk = NULL;
+        }
+    }
+}
+
+// General
+
+int Mix_OpenAudio(int frequency, uint16_t format, int channels, int chunksize)
+{
+    spec = (SDL_AudioSpec){.freq = frequency,
+                           .format = format,
+                           .channels = channels,
+                           .samples = chunksize / (format / 8) / channels,
+                           .callback = callback,
+                           .size = chunksize,
+                           .userdata = NULL};
+    frame = malloc(chunksize);
+    SDL_OpenAudio(&spec, NULL);
+    SDL_PauseAudio(false);
+    return 0;
+}
+
+void Mix_CloseAudio()
+{
+    SDL_CloseAudio();
+}
+
+// Samples
+
+Mix_Chunk *Mix_LoadWAV_RW(SDL_RWops *src, int freesrc)
+{
+    Mix_Chunk *ret = malloc(sizeof(Mix_Chunk));
+    size_t data_size = src->size(src);
+    uint8_t *data_buf = malloc(data_size);
+    src->seek(src, 0, RW_SEEK_SET);
+    src->read(src, data_buf, 1, data_size);
+
+    int error;
+    *ret = (Mix_Chunk){
+        .v = stb_vorbis_open_memory(data_buf, data_size, &error, NULL),
+        .loops = 0,
+    };
+    if (freesrc)
+        src->close(src);
+    return ret;
+}
+
+void Mix_FreeChunk(Mix_Chunk *chunk)
+{
+    for (int i = 0; i < channel_num; i++)
+    {
+        if (channels[i].chunk != chunk)
+            continue;
+        channels[i].chunk = NULL;
+        call_callback(i);
+    }
+    stb_vorbis_close(chunk->v);
+    free(chunk);
+}
+
+// Channels
+
+int Mix_AllocateChannels(int numchans)
+{
+    assert(numchans <= SDL_CHANNEL_MAX);
+    if (numchans < 0)
+        return channel_num;
+    for (int i = numchans; i < channel_num; i++)
+        call_callback(i);
+    for (int i = channel_num; i < numchans; i++)
+    {
+        channels[i].volume = MIX_MAX_VOLUME;
+        channels[i].chunk = NULL;
+        channels[i].loops = 0;
+        channels[i].paused = true;
+    }
+    channel_num = numchans;
+    return numchans;
+}
+
+int Mix_Volume(int channel, int volume)
+{
+    assert(channel != -1 || volume != -1);
+    if (volume == -1)
+        return channels[channel].volume;
+    if (channel == -1)
+    {
+        int avg = 0;
+        for (int i = 0; i < channel_num; i++)
+            avg += channels[channel].volume;
+        avg /= channel_num;
+
+        for (int i = 0; i < channel_num; i++)
+            channels[channel].volume = volume;
+        return avg;
+    }
+    volume = volume < MIX_MAX_VOLUME ? volume : MIX_MAX_VOLUME;
+    int old_volume = channels[channel].volume;
+    channels[channel].volume = volume;
+    return old_volume;
+}
+
+int Mix_PlayChannel(int channel, Mix_Chunk *chunk, int loops)
+{
+    if (channel == -1)
+    {
+        for (int i = 0; i < channel_num; i++)
+        {
+            if (channels[i].chunk != NULL)
+                continue;
+            channel = i;
+            break;
+        }
+        if (channel == -1)
+            return -1;
+    }
+    channels[channel].chunk = chunk;
+    channels[channel].loops = loops;
+    channels[channel].paused = false;
+    channels[channel].volume = MIX_MAX_VOLUME;
+    return channel;
+}
+
+void Mix_Pause(int channel)
+{
+    channels[channel].paused = true;
+}
+
+void Mix_ChannelFinished(void (*channel_finished)(int channel))
+{
+    channel_finished_callback = channel_finished;
+}
+
+// Music
+
+Mix_Music *Mix_LoadMUS_RW(SDL_RWops *src)
+{
+    size_t size_val = src->size(src);
+    uint8_t *buf = malloc(size_val);
+    src->seek(src, 0, RW_SEEK_SET);
+    src->read(src, buf, sizeof(*buf), size_val);
+    int error;
+    Mix_Music *ret = malloc(sizeof(Mix_Music));
+    ret->v = stb_vorbis_open_memory(buf, size_val, &error, NULL);
+    ret->loops = 0;
+    ret->volume = MIX_MAX_VOLUME;
+    return ret;
+}
+
+void Mix_FreeMusic(Mix_Music *music)
+{
+    if (music == cur_music)
+    {
+        cur_music = NULL;
+    }
+    stb_vorbis_close(music->v);
+    free(music);
+}
+
+int Mix_PlayMusic(Mix_Music *music, int loops)
+{
+    cur_music = music;
+    cur_music->loops = loops;
+    return 0;
+}
+
+int Mix_VolumeMusic(int volume)
+{
+    if (!Mix_PlayingMusic())
+        return MIX_MAX_VOLUME;
+    int old_volume = cur_music->volume;
+    if (volume != -1)
+        cur_music->volume = volume;
+    return old_volume;
+}
+
+int Mix_HaltMusic()
+{
+    cur_music = NULL;
+    return 0;
+}
+
+int Mix_PlayingMusic()
+{
+    return cur_music != NULL;
+}
+```
+
+下面是个简单的演示：
+
+![[simplescreenrecorder-2025-08-28_12.12.10.mp4]]
+
+#### 在ONScripter中播放音效(2)
+
+从教程中可以看到，单纯频率提升会带来样本数的增多，而单纯的增加声道则会增加每个样本的的比特数。所以说，如果我们最终要播放的是总共$len$B的$44100$Hz的双声道音频，而输入的是$freq$Hz的$channel$声道音频，那么输入的音频字节数量就应该是
+$$
+len \cdot \frac{freq}{44100} \cdot \frac{channel}{2}
+$$
+这样在扩展之后才能生成$len$字节的用于播放的音频。在实现上只需要小改一下上面我自己定义的`play_audio`函数，增加一个临时缓冲区就够了：
+
+```c title="$NAVY_HOME/libs/libSDL_mixer/src/mixer.c"
+static uint8_t *input_frame = NULL;
+static uint8_t *frame = NULL;
+
+static int play_audio(uint8_t *stream, int stream_len, stb_vorbis *v,
+                      int64_t *loops, int volume)
+{
+    stb_vorbis_info info = stb_vorbis_get_info(v);
+    int input_len = stream_len * info.channels / spec.channels *
+                    info.sample_rate / spec.freq;
+    int samples_per_channel =
+        stb_vorbis_get_samples_short_interleaved(v, info.channels,
+                                                 (void *)input_frame,
+                                                 input_len / sizeof(int16_t));
+    if (samples_per_channel == 0)
+    {
+        if (*loops != 0)
+        {
+            (*loops)--;
+            stb_vorbis_seek_start(v);
+            samples_per_channel =
+                stb_vorbis_get_samples_short_interleaved(v, info.channels,
+                                                         (void *)input_frame,
+                                                         input_len /
+                                                             sizeof(int16_t));
+        }
+    }
+    int input_nbyte = samples_per_channel * info.channels * sizeof(int16_t);
+    int16_t *frame16 = (int16_t *)frame;
+    for (int i = 0; i < input_nbyte; i += sizeof(int16_t))
+    {
+        int16_t sample = *(int16_t *)(&input_frame[i]);
+        for (int j = 0; j < (spec.freq / info.sample_rate) *
+                                (spec.channels / info.channels);
+             j++)
+            *(frame16++) = sample;
+    }
+    int nbyte = (uint8_t *)frame16 - frame;
+    SDL_MixAudio(stream, frame, nbyte, volume);
+    return input_nbyte;
+}
+```
+
+在游戏“星之梦”中，可以听游戏刚开始男主走近并打开“天象馆”大门时候的声音来判断是否实现正确，这段音频是22050Hz单声道的，所以要在原先的基础上乘4倍即可。
+
+#### 实现AM native的磁盘
+
+教程中让我们首先实现一下AM native的IOE中的磁盘。在这里我们直接把一个环境变量的路径对应的文件当作磁盘的，所以实现起来很简单，用一些glibc里操作文件的库函数就够了。况且框架代码都已经编写完了，不用我们亲自操刀。但是有个地方需要小改一下，因为往磁盘里读取、写入数据时的块数量可能是0，此时`fread`和`fwrite`的返回值不是1，要做个判断才行：
+
+```c title="$AM_HOME/am/src/native/ioe/disk.c" {11-14}
+void __am_disk_blkio(AM_DISK_BLKIO_T *io)
+{
+    if (fp)
+    {
+        fseek(fp, io->blkno * BLKSZ, SEEK_SET);
+        int ret;
+        if (io->write)
+            ret = fwrite(io->buf, io->blkcnt * BLKSZ, 1, fp);
+        else
+            ret = fread(io->buf, io->blkcnt * BLKSZ, 1, fp);
+        if (io->blkcnt > 0)
+            assert(ret == 1);
+        else
+            assert(ret == 0);
+    }
+}
+```
+
+然后就是在Nanos-lite上添加磁盘设备的支持了。在Nanos-lite上的磁盘读写和AM native上的读写并不一样：Nanos-lite上是针对于字节的，而AM native上则是针对于磁盘的各个块。为了把字节序列用块序列表示，我们可以把这个字节序列分成三大块：
+
+1. 字节序列左端点所在的块`l_blk`
+2. 字节序列右端点所在的块`r_blk`
+3. 字节序列左右端点之间的块`l_blk`~`r_blk`
+
+这样我们只需要多申请一个块大小的临时缓冲区，就可以拿它作为中间量处理一些边缘的块，然后再调用AM的IOE接口。而中间的块因为都是完整的块，所以可以直接调用AM的IOE接口。具体实现如下：
+
+```c title="nanos-lite/src/ramdisk.c"
+static int disk_blk_size = 0, disk_blk_cnt = 0;
+#define BLKSZ 512
+static uint8_t blkbuf[BLKSZ] = {0};
+size_t disk_read(void *buf, size_t offset, size_t len)
+{
+    size_t l = offset;
+    size_t l_blk = l / disk_blk_size;
+    size_t r = offset + len;
+    size_t r_blk = r / disk_blk_size;
+    if (l_blk == r_blk)
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(buf, blkbuf + l % disk_blk_size, r - l);
+    }
+    else
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(buf, blkbuf + l % disk_blk_size,
+               disk_blk_size - l % disk_blk_size);
+        buf += disk_blk_size - l % disk_blk_size;
+        io_write(AM_DISK_BLKIO, false, buf, l_blk + 1, r_blk - l_blk - 1);
+        buf += (r_blk - l_blk - 1) * disk_blk_size;
+        io_write(AM_DISK_BLKIO, false, blkbuf, r_blk, 1);
+        memcpy(buf, blkbuf, r % disk_blk_size);
+    }
+    return len;
+}
+
+size_t disk_write(const void *buf, size_t offset, size_t len)
+{
+    size_t l = offset;
+    size_t l_blk = l / disk_blk_size;
+    size_t r = offset + len;
+    size_t r_blk = r / disk_blk_size;
+    if (l_blk == r_blk)
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(blkbuf + l % disk_blk_size, buf, r - l);
+        io_write(AM_DISK_BLKIO, true, blkbuf, l_blk, 1);
+    }
+    else
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(blkbuf + l % disk_blk_size, buf,
+               disk_blk_size - l % disk_blk_size);
+        io_write(AM_DISK_BLKIO, true, blkbuf, l_blk, 1);
+        buf += disk_blk_size - l % disk_blk_size;
+        io_write(AM_DISK_BLKIO, true, (void *)buf, l_blk + 1,
+                 r_blk - l_blk - 1);
+        buf += (r_blk - l_blk - 1) * disk_blk_size;
+        io_write(AM_DISK_BLKIO, false, blkbuf, r_blk, 1);
+        memcpy(blkbuf, buf, r % disk_blk_size);
+        io_write(AM_DISK_BLKIO, true, blkbuf, r_blk, 1);
+    }
+    return len;
+}
+
+void init_disk()
+{
+    AM_DISK_CONFIG_T cfg = io_read(AM_DISK_CONFIG);
+    assert(cfg.present);
+    disk_blk_cnt = cfg.blkcnt;
+    disk_blk_size = cfg.blksz;
+}
+```
+
+注意到如果这个字节序列只跨了2个块，那么我将会以0的块长调用一次AM的IOE接口，所以上面才需要修改一下框架代码的`assert`。
+
+因为我们的磁盘跟ramdisk的地位一样，只是它相较于ramdisk的容量更大，所以我们可以在实现了磁盘的读写操作后，让ramdisk的读写操作直接调用磁盘的读写操作，就不需要修改其他的有关ramdisk的代码了。
+
+接下来应该在`nanos-lite/src/resources.S`中去掉`.incbin "build/ramdisk.img"`，这样就不会把生成的ramdisk嵌入到内存中了。
+
+最后是让AM native支持大屏幕，教程上的[链接](https://github.com/NJU-ProjectN/abstract-machine/commit/e4e5d03fa6dc52795e66ac2693e0fe0e0d85c9af) 是已经过时的实现，不适合ICS2024的AM native了。实际上现在只需要取消掉`$AM_HOME/am/src/native/ioe/gpu.c`的`#define MODE_800x600`这一行的注释就可以了。
+
+为了玩上“星之梦”，还需要把“星之梦”的游戏数据放到磁盘上，这很简单，在`$NAVY_HOME/fsimg/share/games`下创建一个软链接就可以了。如果你实现正确，现在应该就可以在AM native上的Nanos-lite里启动ONScripter，进而玩上“星之梦”了。
+
+![[simplescreenrecorder-2025-08-29_01.10.35.mp4]]
+
+#### 实现NEMU的磁盘
+
+教程中首先谈到的是程序给出的地址`buf`因为是虚拟地址无法被磁盘设备所理解，所以需要在Nanos-lite上添加一个专门用于磁盘读写的单个块大小的小缓存，因为这个缓存是在Nanos-lite的内核地址空间上，虚拟地址和物理地址是恒等映射的，所以拿它跟磁盘进行交互是可以让磁盘理解`buf`的地址的。我之前的`disk_read`和`disk_write`的实现中也不约而同地用上了这个小缓存（虽然用意不同），只需要小改一下就可以了：
+
+```c title="nanos-lite/src/ramdisk.c"
+size_t disk_read(void *buf, size_t offset, size_t len)
+{
+    size_t l = offset;
+    size_t l_blk = l / disk_blk_size;
+    size_t r = offset + len;
+    size_t r_blk = r / disk_blk_size;
+    if (l_blk == r_blk)
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(buf, blkbuf + l % disk_blk_size, r - l);
+    }
+    else
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(buf, blkbuf + l % disk_blk_size,
+               disk_blk_size - l % disk_blk_size);
+        buf += disk_blk_size - l % disk_blk_size;
+        for (int i = l_blk + 1; i <= r_blk - 1; i++)
+        {
+            io_write(AM_DISK_BLKIO, false, blkbuf, i, 1);
+            memcpy(buf, blkbuf, disk_blk_size);
+            buf += disk_blk_size;
+        }
+        io_write(AM_DISK_BLKIO, false, blkbuf, r_blk, 1);
+        memcpy(buf, blkbuf, r % disk_blk_size);
+    }
+    return len;
+}
+
+size_t disk_write(const void *buf, size_t offset, size_t len)
+{
+    size_t l = offset;
+    size_t l_blk = l / disk_blk_size;
+    size_t r = offset + len;
+    size_t r_blk = r / disk_blk_size;
+    if (l_blk == r_blk)
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(blkbuf + l % disk_blk_size, buf, r - l);
+        io_write(AM_DISK_BLKIO, true, blkbuf, l_blk, 1);
+    }
+    else
+    {
+        io_write(AM_DISK_BLKIO, false, blkbuf, l_blk, 1);
+        memcpy(blkbuf + l % disk_blk_size, buf,
+               disk_blk_size - l % disk_blk_size);
+        io_write(AM_DISK_BLKIO, true, blkbuf, l_blk, 1);
+        buf += disk_blk_size - l % disk_blk_size;
+        for (int i = l_blk + 1; i < r_blk - 1; i++)
+        {
+            memcpy(blkbuf, buf, disk_blk_size);
+            io_write(AM_DISK_BLKIO, true, (void *)blkbuf, i, 1);
+            buf += disk_blk_size;
+        }
+        io_write(AM_DISK_BLKIO, false, blkbuf, r_blk, 1);
+        memcpy(blkbuf, buf, r % disk_blk_size);
+        io_write(AM_DISK_BLKIO, true, blkbuf, r_blk, 1);
+    }
+    return len;
+}
+```
+
+上面只是把Nanos-lite的内容写好了，实际上还需要完善riscv32-nemu的AM和NEMU中的有关磁盘的内容。那我们就首先实现一下NEMU中的内容。由于我们是把物理机上的一个文件当作磁盘用的，所以要先让NEMU知道这个文件在哪儿，注意到`$NEMU_HOME/include/generated/autoconf.h`有一个宏`CONFIG_DISK_IMG_PATH`，它就可以用来表示磁盘文件的路径，我们只需要在Kconfig里设置一下就行。
+
+默认情况下，磁盘设备的设备寄存器被放在了0xa0000300的位置，而在它上面则有地址为0xa00003f8的串口设备的设备寄存器，所以我们的磁盘设备的设备寄存器的大小一定不能超过0xf8字节，因此这需要我们较为谨慎地考虑设备寄存器。对于AM中的抽象寄存器`AM_DISK_CONFIG`，有3个变量；对于`AM_DISK_STATUS`，虽然我们认为磁盘一直都会处于就绪状态，但还是给它分配1个变量；而对于`AM_DISK_BLKIO`，有4个变量。因为额外还有一个`CMD`命令寄存器，所以总共需要在设备寄存器里放9个变量，每个变量都是`word_t`大小的，对于riscv32而言就是0x24个字节，这显然是能够放得进去的。
+
+此外，NEMU的disk获取到的`buf`的地址是它在模拟器里的地址，并不是`pmem`里的位置，所以要用`guest_to_host`进行一次转换。教程里给出的转换似乎有误，可能是因为教程这一块太久没更新过了，实际上直接调用`guest_to_host(pa)`就可以了。因此我的NEMU上的disk设备是如下进行实现的：
+
+```c title="$NEMU_HOME/src/device/disk.c"
+#define BLKSZ 512
+
+enum
+{
+    reg_present,
+    reg_blksz,
+    reg_blkcnt,
+    reg_ready,
+    reg_iowrite,
+    reg_iobuf,
+    reg_ioblkno,
+    reg_ioblkcnt,
+    reg_cmd,
+    nr_reg
+};
+
+static uint32_t space_size = nr_reg * sizeof(uint32_t);
+static uint32_t *disk_base = NULL;
+static FILE *f = NULL;
+
+void do_io()
+{
+    if (!disk_base[reg_cmd])
+        return;
+    paddr_t pa = disk_base[reg_iobuf];
+    void *buf = guest_to_host(pa);
+    size_t size = disk_base[reg_ioblkcnt] * BLKSZ;
+    size_t offset = disk_base[reg_ioblkno] * BLKSZ;
+    fseek(f, offset, SEEK_SET);
+    int ret;
+    if (disk_base[reg_iowrite])
+        ret = fwrite(buf, size, 1, f);
+    else
+        ret = fread(buf, size, 1, f);
+    if (size > 0)
+        assert(ret == 1);
+    else
+        assert(ret == 0);
+    disk_base[reg_cmd] = 0;
+}
+
+static void disk_ctl_io_handler(uint32_t offset, int len, bool is_write)
+{
+    assert(len == 4);
+    switch (offset / 4)
+    {
+    case reg_present:
+    case reg_blkcnt:
+    case reg_blksz:
+    case reg_ready:
+        assert(!is_write);
+        break;
+    case reg_iowrite:
+    case reg_iobuf:
+    case reg_ioblkcnt:
+    case reg_ioblkno:
+        assert(is_write);
+        break;
+    case reg_cmd:
+        assert(is_write);
+        do_io();
+        break;
+    default:
+        assert(0);
+    }
+}
+
+void init_disk()
+{
+    disk_base = (uint32_t *)new_space(space_size);
+    f = fopen(CONFIG_DISK_IMG_PATH, "r+");
+    Assert(f, "unable to initialize disk, wrong diskimg path = %s",
+           CONFIG_DISK_IMG_PATH);
+    disk_base[reg_present] = 1;
+    disk_base[reg_blksz] = BLKSZ;
+    fseek(f, 0, SEEK_END);
+    int file_size = ftell(f);
+    rewind(f);
+    disk_base[reg_blkcnt] = (file_size + BLKSZ - 1) / BLKSZ;
+    disk_base[reg_ready] = 1;
+    disk_base[reg_cmd] = 0;
+#ifdef CONFIG_HAS_PORT_IO
+    add_pio_map("disk", CONFIG_DISK_CTL_PORT, disk_base, space_size,
+                disk_ctl_io_handler);
+#else
+    add_mmio_map("disk", CONFIG_DISK_CTL_MMIO, disk_base, space_size,
+                 disk_ctl_io_handler);
+#endif
+}
+```
+
+如上文所述，我的设备寄存器是按照抽象寄存器设计的，所以我的AM就很好实现了：
+
+```c title="$AM_HOME/am/src/platform/nemu/ioe/disk.c"
+#define DISK_PRESENT_ADDR (DISK_ADDR + 0x00)
+#define DISK_BLKSZ_ADDR (DISK_ADDR + 0x04)
+#define DISK_BLKCNT_ADDR (DISK_ADDR + 0x08)
+#define DISK_READY_ADDR (DISK_ADDR + 0x0c)
+#define DISK_IOWRITE_ADDR (DISK_ADDR + 0x10)
+#define DISK_IOBUF_ADDR (DISK_ADDR + 0x14)
+#define DISK_IOBLKNO_ADDR (DISK_ADDR + 0x18)
+#define DISK_IOBLKCNT_ADDR (DISK_ADDR + 0x1c)
+#define DISK_IOCMD_ADDR (DISK_ADDR + 0x20)
+
+void __am_disk_config(AM_DISK_CONFIG_T *cfg)
+{
+    cfg->present = inl(DISK_PRESENT_ADDR);
+    cfg->blkcnt = inl(DISK_BLKCNT_ADDR);
+    cfg->blksz = inl(DISK_BLKSZ_ADDR);
+}
+
+void __am_disk_status(AM_DISK_STATUS_T *stat)
+{
+    stat->ready = inl(DISK_READY_ADDR);
+}
+
+void __am_disk_blkio(AM_DISK_BLKIO_T *io)
+{
+    outl(DISK_IOWRITE_ADDR, io->write);
+    outl(DISK_IOBUF_ADDR, (uintptr_t)io->buf);
+    outl(DISK_IOBLKCNT_ADDR, io->blkcnt);
+    outl(DISK_IOBLKNO_ADDR, io->blkno);
+    outl(DISK_IOCMD_ADDR, 1);
+}
+```
+
+现在从原则上就可以成功在riscv32-nemu上的Nanos-lite上运行OnScripter了。不过你可能会发现一个Bug：某些时候播放的音乐总是还没播放完毕就被重置播放了。这是因为我在libSDL_mixer的不合适的实现导致的，具体而言是我在`play_audio`中，以为`stb_vorbis_get_samples_short_interleaved`返回的`samples_per_channel`为0就代表这个音乐已经播放完毕，需要重新复位。实际上不是这样的，因为有可能NEMU的audio缓冲区没空间了，导致向回调函数索要的数据长度也为0，即`stream_len`为0，那这样肯定也会导致`stb_vorbis_get_samples_short_interleaved`的返回值为0。所以应该把判断音乐播放完毕的条件改成是`stream_len != 0 && samples_per_channel == 0`，或者说发现`stream_len`为0就提前返回。
+
+下面是一段演示，很卡，但是能运行是真的：
+
+![[simplescreenrecorder-2025-08-29_22.02.54.mp4]]
+
+#### DMA和CPU cache
+
+这个之后再简单了解一下吧。
+
+#### 如何在操作系统中实现fork()?
+
+首先是应该创建一个新的地址空间，把原进程的地址空间原样地复制一份，这样就能克隆原进程的堆栈等信息，接着是
+把创建一个新的PCB，并把原进程的PCB原样复制一份。为了能让这个新进程能跑，还要在它的内核栈上构建上下文用于之后进行恢复，新进程的上下文的信息基本上就是原进程的信息，不过需要修改一下`a0`寄存器，因为它会被用来表示`fork`的返回值。
+
+#### 体验窗口管理器NWM (NJU Window Manager)
+
+出了好多Bug，有图像显示Bug，还有音频Bug，还有键盘事件Bug，最近没什么时间就先不弄了。
+
+#### 体验PA中的并发bug
+
+因为NEMU里的显存缓冲区并没有加锁，因此有可能在一个进程写入显存但是尚未刷新的过程中，另一个进程切换过来写显存且没有覆盖上一个进程写入的内容，这样就会导致最终刷新输出的屏幕上的内容会有部分是之前进程写入的内容。
+
+#### 体验PA中的"崩溃不一致性"
+
+之后再打算做一下。
+
 ## 必答题
 
 #### 分时多任务的具体过程

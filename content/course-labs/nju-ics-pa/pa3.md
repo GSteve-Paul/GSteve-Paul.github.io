@@ -1266,7 +1266,6 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
     int sx, sy;
     canvas2screen(x, y, &sx, &sy);
     int fd = open("/dev/fb", 0);
-    pixels += y * canvas_w + x;
     for (int i = sy; i < sy + h; i++)
     {
         int offset = i * screen_w + sx;
@@ -1274,7 +1273,7 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
         lseek(fd, offset, SEEK_SET);
         int len = w * 4;
         write(fd, pixels, len);
-        pixels += canvas_w;
+        pixels += w;
     }
     close(fd);
 }
@@ -1567,6 +1566,15 @@ void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
         w = s->w;
         h = s->h;
     }
+    static uint32_t good_pixels[800 * 600];
+	for (int i = y; i < y + h; i++)
+	{
+		for (int j = x; j < x + w; j++)
+		{
+			int idx = (i - y) * w + j - x;
+			good_pixels[idx] = *(uint32_t *)get_pixel(s, j, i);
+		}
+	}
     NDL_DrawRect((uint32_t *)s->pixels, x, y, w, h);
 }
 ```
@@ -1952,6 +1960,8 @@ void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color)
 
 void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
 {
+    TimerCallbackHelper();
+    AudioCallbackHelper();
     assert(s);
     if (!(x | y | w | h))
     {
@@ -1959,10 +1969,18 @@ void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
         w = s->w;
         h = s->h;
     }
-    static uint32_t good_pixels[400 * 300];
+    static uint32_t good_pixels[800 * 600];
     if (s->format->BitsPerPixel == 32)
     {
-        NDL_DrawRect((uint32_t *)s->pixels, x, y, w, h);
+        for (int i = y; i < y + h; i++)
+        {
+            for (int j = x; j < x + w; j++)
+            {
+                int idx = (i - y) * w + j - x;
+                good_pixels[idx] = *(uint32_t *)get_pixel(s, j, i);
+            }
+        }
+        NDL_DrawRect(good_pixels, x, y, w, h);
     }
     else if (s->format->BitsPerPixel == 8)
     {
@@ -1974,10 +1992,10 @@ void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
             {
                 uint8_t *pixel = get_pixel(s, j, i);
                 uint32_t real_pixel = s->format->palette->colors[*pixel].val;
-                new_pixels[i * s->w + j] = real_pixel;
+                new_pixels[(i - y) * w + j - x] = real_pixel;
             }
         }
-        ConvertPixelsARGB_ABGR(good_pixels, new_pixels, s->w * s->h);
+        ConvertPixelsARGB_ABGR(good_pixels, new_pixels, w * h);
         NDL_DrawRect(good_pixels, x, y, w, h);
     }
     else
