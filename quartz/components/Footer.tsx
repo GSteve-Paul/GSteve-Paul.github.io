@@ -14,6 +14,9 @@ export default ((opts?: Options) => {
     return (
       <footer class={`${displayClass ?? ""}`}>
         <p>
+          <a href="https://beian.miit.gov.cn/" target="_blank">渝ICP备2025068702号-1</a>
+        </p>
+        <p>
           {i18n(cfg.locale).components.footer.createdWith}{" "}
           <a href="https://quartz.jzhao.xyz/">Quartz v{version}</a> © {year}
         </p>
