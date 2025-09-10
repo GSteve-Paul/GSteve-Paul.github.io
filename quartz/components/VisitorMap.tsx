@@ -2,7 +2,7 @@ import { QuartzComponent, QuartzComponentConstructor } from "./types"
 
 const VisitorMap: QuartzComponent = () => {
   return <body>
-    <script type='text/javascript' id='clustrmaps' src='//cdn.clustrmaps.com/map_v2.js?cl=080808&w=500&t=n&d=YlsGekbnNK41WXrqJD77XFDxV0HdS9sS8vEUOcU0DUo&co=ffffff&ct=808080&cmo=3acc3a&cmn=ff5353'></script>
+    <script type="text/javascript" id="clustrmaps" src="//clustrmaps.com/map_v2.js?d=1UBnJzfBqND8LMv6DAkx3at6WX_TFZn5F5Ksu9V3IAw&cl=ffffff&w=a"></script>
     <br></br>
   </body>
 }
