@@ -15,7 +15,7 @@ tags:
 
 ## 实现
 
-### 任务1
+### Task1
 
 这个实现起来很简单的。在构造`HyperLogLog`实例的时候就可以计算出`b`和`m`，并开一个含有`m`个元素的`vector`当作寄存器。其他的几个函数目的都很明确，也就只有`HyperLogLog::AddElem()`稍微有点复杂而已：
 
@@ -60,7 +60,7 @@ auto HyperLogLog<KeyType>::ComputeCardinality() -> void {
 
 这样任务1的测试应该都可以顺利通过了。
 
-### 任务2
+### Task2
 
 任务2的算法流程没有任务1中说得那么详细，这里建议阅读一下教程中提到的[这篇文章](https://engineering.fb.com/2018/12/13/data-infrastructure/hyperloglog/)。这样你应该可以了解到`dense_bucket_`和`overflow_bucket_`的区别：前一个放的是`p`的低$4$位，后一个放的是`p`的高位。因为我们这个小项目里都是处理的64位的哈希数据，当`b`不为$0$时，`p`的值域在$[0, 63]$，也就是说$7$个二进制位就够表示了，所以框架代码中高位的`bitset`的位数为$7 - 4 = 3$。
 
