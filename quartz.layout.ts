@@ -7,21 +7,21 @@ export const sharedPageComponents: SharedLayout = {
   header: [],
   afterBody: [
     // Component.VisitorMap(),
-    // Component.Comments({
-    //     provider: 'giscus',
-    //     options: {
-    //         // from data-repo
-    //         repo: 'GSteve-Paul/GSteve-Paul.github.io',
-    //         // from data-repo-id
-    //         repoId: 'R_kgDOO4FHsQ',
-    //         // from data-category
-    //         category: 'Announcements',
-    //         // from data-category-id
-    //         categoryId: 'DIC_kwDOO4FHsc4CrMM1',
-    //         // from data-lang
-    //         lang: 'zh-CN',
-    //     }
-    // }),
+    Component.Comments({
+        provider: 'giscus',
+        options: {
+            // from data-repo
+            repo: 'GSteve-Paul/GSteve-Paul.github.io',
+            // from data-repo-id
+            repoId: 'R_kgDOO4FHsQ',
+            // from data-category
+            category: 'Announcements',
+            // from data-category-id
+            categoryId: 'DIC_kwDOO4FHsc4CrMM1',
+            // from data-lang
+            lang: 'zh-CN',
+        }
+    }),
   ],
   footer: Component.Footer({
     links: {
