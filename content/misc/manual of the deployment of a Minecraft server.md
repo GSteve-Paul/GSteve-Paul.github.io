@@ -5,7 +5,7 @@ tags:
 ---
 ## 简介
 
-本手册主要讲的是如何在Ubuntu 22.04 LTS上部署好一个Java版的Fabric模组服。这主要包含一下三个方面：
+本手册主要讲的是如何在Ubuntu 22.04 LTS上部署好一个Java版的Fabric模组服。这主要包含以下三个方面：
 
 1. 搭设Java版的Fabric模组服服务端(./server)
 2. 配置远程控制台(./mcrcon)
