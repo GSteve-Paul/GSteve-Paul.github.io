@@ -2,6 +2,7 @@
 title: "P0: C++ Primer"
 tags:
   - CPP
+date: 2025-09-07
 ---
 一上来感觉很有压力啊！首先就摆明了：如果无法完美地完成Project #0 ，那么这个课就可以直接不用来上啦！我之前并没有学过太多现代C++的内容，如果你和我一样，那么就先看看这个[Bootcamp](https://github.com/cmu-db/15445-bootcamp)吧，会有很大帮助的！
 

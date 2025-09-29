@@ -1,7 +1,8 @@
 ---
 title: Minecraft服务器部署手册
 tags:
-  - Minecraft服务器
+  - 部署
+date: 2025-09-28
 ---
 ## 简介
 
