@@ -11,7 +11,7 @@ export default ((opts?: Options) => {
   const Footer: QuartzComponent = ({ displayClass, cfg }: QuartzComponentProps) => {
     const year = new Date().getFullYear()
     const links = opts?.links ?? []
-    const beianImageDefaultPath = `static/beian.png`
+    const beianImageDefaultPath = `/static/beian.png`
     return (
       <footer class={`${displayClass ?? ""}`}>
         {/* <script type="text/javascript" id="clustrmaps" src="//clustrmaps.com/map_v2.js?d=1UBnJzfBqND8LMv6DAkx3at6WX_TFZn5F5Ksu9V3IAw&cl=ffffff&w=a"></script> */}
