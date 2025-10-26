@@ -9,7 +9,9 @@ title: 友情链接
 | dodola | https://dodolalorc.cn/        |
 | ling_1 | https://ling101w.github.io/   |
 
-非常欢迎你来添加友链！😄
+---
+
+噢！我亲爱的朋友，非常欢迎你来添加友链！（翻译腔）😄
 
 如果你愿意，请在评论区留下如下信息：
 
