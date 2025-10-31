@@ -51,4 +51,4 @@ title: 关于我
 你***可以***在
 
 - [Github](https://github.com/GSteve-Paul) 上找到我
-- 或者直接发邮件📧到<a href="mailto:lijn101@outlook.com" data-slug="mailto:lijn101@outlook.com">邮箱</a>
+- 或者直接发邮件📧到 lijn101@outlook.com
