@@ -1,6 +1,6 @@
 ---
 title: 用LLM优化SAT求解器
-date: 2025-02-10
+date: 2025-10-02
 tags:
   - LLM
   - SAT
