@@ -8,7 +8,7 @@ date: 2025-11-09
 
 原以为是 Ubuntu 24.04 LTS的问题，于是乎装了 NixOS, Fedora, Debian 发现都有这个问题，而且时不时的掉网卡问题会导致 Debian 13反复进入睡眠状态——我这才明白——看来我电脑的网卡确有问题！
 
-![[Pasted image 20251109225511.png]]
+![[maodie.gif]]
 
 ---
 
