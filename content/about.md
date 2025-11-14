@@ -1,8 +1,6 @@
 ---
 title: 关于我
 ---
-![](https://bluemsun-blog.oss-cn-beijing.aliyuncs.com/avatars/a328378e-f5f0-40a1-8ea0-4204e538bfb4.jpg)
-
 我是黎江楠，生于2004年，常用网名的正则表达式为 `[A-Z]Steve_Paul`。
 
 ## 内容？
