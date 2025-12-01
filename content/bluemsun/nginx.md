@@ -108,7 +108,7 @@ server {
 如果把局域网外的Internet想象成一个巨大的资源库，则局域网中的客户端要访问Internet，则需要通过代理服务器来访问，这种代理服务就称为正向代理（也就是大家常说的，通过正向代理进行上网功能）
 
 
-![v2-a2ca60e556b7e67286d6eecb4e4a2b65_1440w.png](../data/bluemsun/nginx/85d82da0ed814dc3a0d148023b9fb4c3.image)
+![](https://file.stevepaul.cc/85d82da0ed814dc3a0d148023b9fb4c3.png)
 
 配置server:
 
@@ -131,7 +131,7 @@ server {
 
 其实客户端对代理是无感知的，因为客户端不需要任何配置就可以访问，我们只需要将请求发送到反向代理服务器，由反向代理服务器去选择目标服务器获取数据后，在返回给客户端，此时反向代理服务器和目标服务器对外就是一个服务器，暴露的是代理服务器地址，隐藏了真实服务器 IP 地址。
 
-![v2-1e6052ffd7dfd4e1249e9abd92eab648_1440w.webp](../data/bluemsun/nginx/d7389090199744f9931e08d0b64f5a18.image)
+![](https://file.stevepaul.cc/d7389090199744f9931e08d0b64f5a18.png)
 
 实际上配置方法和正向代理完全一样，只是逻辑有所不同而已
 

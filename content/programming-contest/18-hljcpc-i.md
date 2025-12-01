@@ -39,9 +39,9 @@ $$
 \end{cases}
 $$
 
-也能够很容易地得出要在玩耍时得到A类中某一种奖章的概率是$ p = \frac{\lceil \frac{n}{m} \rceil}{n}$
+也能够很容易地得出要在玩耍时得到A类中某一种奖章的概率是 $p = \frac{\lceil \frac{n}{m} \rceil}{n}$
 
-同理,在玩耍时得到B类中某一种奖章的概率是 $ q = \frac{\lceil \frac{n}{m} \rceil - 1}{n}$
+同理,在玩耍时得到B类中某一种奖章的概率是 $q = \frac{\lceil \frac{n}{m} \rceil - 1}{n}$
 
 <hr>
 

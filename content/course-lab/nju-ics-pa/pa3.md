@@ -222,7 +222,7 @@ INSTPAT("??????? ????? ????? 010 ????? 11100 11", csrrs, I,
 
 其实这里有点怪。因为从RISC-V的手册中没有任何一个异常叫作自陷异常，自然是没有对应的异常号的：
 
-![[Screenshot from 2025-08-08 16-01-48.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-08%2016-01-48.png)
 
 而我们这里都是在M模式引发的`ecall`，自然，异常号都是11。那我们只能猜测是`yield`实现中的设置`a7`为-1表示一个自陷事件。
 
@@ -1283,7 +1283,7 @@ void NDL_DrawRect(uint32_t *pixels, int x, int y, int w, int h)
 
 测试程序如下：
 
-![[Screenshot from 2025-08-10 01-41-32.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-10%2001-41-32.png)
 
 上面我的实现中是在`NDL_DrawRect`函数体里面`open`了`/dev/fb`文件，然后写完之后对它进行了`close`操作。这样做的原因是我们在OS中的`open`和`close`系统调用实现并不会产生很大的副作用，随便开开关关也没事。但是这和`native`（也就是navy用户程序直接在本机Linux上）的运行环境并不一致。下面我们来认真探讨一下：
 
@@ -1363,7 +1363,7 @@ static void canvas2screen(int cx, int cy, int *sx, int *sy)
 }
 ```
 
-![[Pasted image 20250810014353.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250810014353.png)
 
 ### 精彩纷呈的应用程序
 
@@ -1607,7 +1607,7 @@ mv *.bmp $NAVY_HOME/fsimg/share/slides/
 
 所以说把一个pdf文件放到该目录下然后`bash ./convert.sh`就可以了，不过应当注意要把`$NAVY_HOME/apps/nslider/src/main.cpp`里面的常量`N`改为真实的bmp文件的数目，然后就可以启动了。
 
-![[Pasted image 20250811151225.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250811151225.png)
 #### 运行NSlider(2)
 
 要明白SDL中的是如何打包事件的，主要要看懂这几个结构体和联合：
@@ -1689,7 +1689,7 @@ int SDL_WaitEvent(SDL_Event *event)
 
 关于如何翻页：看一下源码中哪些地方会调用`prev`和`next`就懂了，实际上键位和vim差不多。下面是一个演示：
 
-![[Screencast from 2025-08-11 15-39-11.mp4]]
+<p><video controls src="https://file.stevepaul.cc/Screencast%20from%202025-08-11%2015-39-11.mp4"></video></p>
 
 #### 运行开机菜单
 
@@ -1714,7 +1714,7 @@ void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color)
 ```
 
 演示如下：
-![[Pasted image 20250811164632.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250811164632.png)
 
 #### 运行NTerm
 
@@ -1764,7 +1764,7 @@ int SDL_PollEvent(SDL_Event *ev)
 
 下面是演示：
 
-![[Pasted image 20250811200555.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250811200555.png)
 #### 实现内建的echo命令
 
 阅读nterm的`builtin-sh.cpp`代码就会知道`sh_handle_cmd`就是用来出理每一条命令的。类似于我们在NEMU里面做的sdb，我们用相同的方式解析命令并执行命令：
@@ -1810,7 +1810,7 @@ static void sh_handle_cmd(const char *cmd)
 
 这样就可以`echo`啦：
 
-![[Pasted image 20250811202055.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250811202055.png)
 #### 运行Flappy Bird
 
 首先尝试一下在Linux上直接运行sdlbird，这需要我安装这些东西：
@@ -1839,7 +1839,7 @@ SDL_Surface *IMG_Load(const char *filename)
 
 可以看到riscv32-NEMU的性能真的不咋的（太慢了），不过一方面也是因为我为了调试，让nanos-lite和navy上的程序都是`-O0 -g`进行编译的，没有做足够的优化。
 
-![[Screencast from 2025-08-11 20-51-07.mp4]]
+<p><video controls src="https://file.stevepaul.cc/Screencast%20from%202025-08-11%2020-51-07.mp4"></video></p>
 
 #### 我不是南京大学的学生, 如何获取仙剑奇侠传的数据文件?
 
@@ -2014,10 +2014,10 @@ void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h)
 
 否则，你看到的仙剑奇侠传的颜色可能有点诡异，甚至有点阴森恐怖：
 
-![[Pasted image 20250812120129.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250812120129.png)
 而正常的应该是这样：
 
-![[Pasted image 20250812120255.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250812120255.png)
 此外还需要实现两个API：`SDL_GetKeyState`与`SDL_Delay`。后者很简单，用`SDL_GetTicks`忙等就可以了。但是前一个需要稍微改动一下之前的代码，即在`SDL_PollEvent`和`SDL_WaitEvent`拿到一个键盘事件后更新键盘状态即可，我是这样实现的：
 
 ```c title="$NAVY_HOME/libs/libminiSDL/src/event.c" {28}
@@ -2067,7 +2067,7 @@ uint8_t *SDL_GetKeyState(int *numkeys)
 
 下面就可以在高达4FPS的帧率下极致畅玩了：
 
-![[Screencast from 2025-08-12 13-39-28.mp4]]
+<p><video controls src="https://file.stevepaul.cc/Screencast%20from%202025-08-12%2013-39-28.mp4"></video></p>
 
 #### 仙剑奇侠传的框架是如何工作的?
 
@@ -2387,7 +2387,7 @@ static int RegisterBWrite(writefunc func) {
 
 下面是让FCEUX运行在riscv32-nemu上的nanos-lite上的Navy上的真实影像，真的很卡：
 
-![[Screencast from 2025-08-13 15-08-22.mp4]]
+<p><video controls src="https://file.stevepaul.cc/Screencast%20from%202025-08-13%2015-08-22.mp4"></video></p>
 
 #### 如何在Navy上运行Nanos-lite?
 
@@ -2398,7 +2398,7 @@ static int RegisterBWrite(writefunc func) {
 在`native`上的`Navy`上挺好玩的，因为不卡。当然在riscv32-nemu上的nanos-lite上也是可以玩的，不过要注意这些文件有点多，要防止生成的ramdisk.img过大。
 
 这是171240518这个游戏的一个胜利结算：
-![[Pasted image 20250813172557.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250813172557.png)
 
 #### RTFSC???
 
@@ -2589,7 +2589,7 @@ void SDL_CloseAudio()
 
 在尝试运行NPlayer时，发现了它所调用的vorbis可以检查出差劲的`fixedpt_div`的实现：好的实现一定是先乘再除的，不然如果先除后乘，因为C语言的除法是整除，那么一旦$A < B$，那直接就变成$0$了，小数部分就没了。
 
-![[simplescreenrecorder-2025-08-14_16.47.52.mp4]]
+<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-14_16.47.52.mp4"></video></p>
 
 可通过键盘的等于号和减号进行音量加减。
 
@@ -2597,7 +2597,7 @@ void SDL_CloseAudio()
 
 来点朝鲜🇰🇵金曲,不过在nanos-lite上是真的有点卡，所以我选择在native上运行：
 
-![[simplescreenrecorder-2025-08-15_00.11.55.mp4]]
+<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-15_00.11.55.mp4"></video></p>
 
 #### 让运行时环境支持C++全局对象的初始化
 
@@ -2805,7 +2805,7 @@ A -> B -> A -> B -> ...
 
 那么只需要在B里面添加一个标志，若标志为1则表示不可继续执行。那么在我们的实现中在其第一次运行时标为1，则在第二次时就不可以继续运行下去，便防止了重入问题。虽然可以在nanos-lite上跑，但是实在是太卡了，所以还是在native上演示一下
 
-![[simplescreenrecorder-2025-08-16_20.03.25.mp4]]
+<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-16_20.03.25.mp4"></video></p>
 
 #### 运行带音效的Flappy Bird
 
@@ -2902,7 +2902,7 @@ void SDL_MixAudio(uint8_t *dst, uint8_t *src, uint32_t len, int volume)
 
 在这里我选择用native上运行的nanos-lite上进行演示：
 
-![[simplescreenrecorder-2025-08-16_23.08.31.mp4]]
+<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-16_23.08.31.mp4"></video></p>
 
 #### 实现可自由开关的DiffTest
 
@@ -3074,7 +3074,7 @@ static void sh_handle_cmd(const char *cmd)
 
 这个任务很简单啊，从nplayer那边随便抄点代码过来就可以了。我用的是Windows Vista的开机音乐，演示如下：
 
-![[simplescreenrecorder-2025-08-18_17.04.51.mp4]]
+<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-18_17.04.51.mp4"></video></p>
 
 ## 必答题 - 理解计算机系统
 

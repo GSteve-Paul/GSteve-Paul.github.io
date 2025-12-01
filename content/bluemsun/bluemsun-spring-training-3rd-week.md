@@ -17,7 +17,7 @@ Java IO是就是用Java 执行输入输出操作.它能够让用户们通过inpu
 - 其他(转换流,缓冲流,对象流)
 
 
-![1290084-20180415203406453-566524870.png](../data/bluemsun/bluemsun-spring-training-3rd-week/90173816e941434fa73eefe5ec989975.image)
+![](https://file.stevepaul.cc/90173816e941434fa73eefe5ec989975.png)
 
 ## Java IO 四大基流
 
@@ -226,10 +226,10 @@ public class Demo01
 }
 ```
 
-![image.png](../data/bluemsun/bluemsun-spring-training-3rd-week/02ba47195c8a44a28b60a39a978d2f12.image)
+![](https://file.stevepaul.cc/02ba47195c8a44a28b60a39a978d2f12.png)
 
 
-![image.png](../data/bluemsun/bluemsun-spring-training-3rd-week/ba7ac30e42414addaff6bab7df79fa9e.image)
+![](https://file.stevepaul.cc/ba7ac30e42414addaff6bab7df79fa9e.png)
 
 比较SHA-256,发现是一样的,说明复制成功.
 
@@ -463,7 +463,7 @@ public class Main
 有`DataInputStream`和`DataOutputStream`两个类,均继承自过滤流,有相似的共同祖先字节输入输出流.
 
 
-![屏幕截图 2023-04-06 081150.png](../data/bluemsun/bluemsun-spring-training-3rd-week/3aa23285b98a48d6b0551901f4f0a147.image)
+![](https://file.stevepaul.cc/3aa23285b98a48d6b0551901f4f0a147.png)
 
 可以用图上的方法对流进行装饰.
 
@@ -575,7 +575,7 @@ public static void tryconv() {
 
 得到的输出在IDEA的控制台中显示如下:
 
-![屏幕截图 2023-04-06 091352.png](../data/bluemsun/bluemsun-spring-training-3rd-week/31da6bd0568143aab8651fa200fd0fd0.image)
+![](https://file.stevepaul.cc/31da6bd0568143aab8651fa200fd0fd0.png)
 
 ### 对象流
 
@@ -671,7 +671,7 @@ public static void OutputTriangle() {
 
 看看输出出来的二进制文件(看不懂):
 
-![屏幕截图 2023-04-06 213455.png](../data/bluemsun/bluemsun-spring-training-3rd-week/1dd4e5569fe44d2590e602f8666019d5.image)
+![](https://file.stevepaul.cc/1dd4e5569fe44d2590e602f8666019d5.png)
 
 注意:
 - 如果要对一个类的实例用对象流输入输出,就必须要这个类实现接口`Serializable`.不然会报`java.io.NotSerializableException`这个运行时异常. 

@@ -64,13 +64,13 @@ ip route show | grep default
 
 有了上述信息，现在可以简单画出来这个网络的示意图了：
 
-![网络拓扑图](web-struct.png)
+![](https://file.stevepaul.cc/web-struct.png)
 ## AP隔离解决方案
 
 
 由于这是单一AP下的问题，我们先把视角切到单独一个AP下：
 
-![AP隔离图](ap-isolation.png)
+![](https://file.stevepaul.cc/ap-isolation.png)
 看到这个图，我们可以提出如下猜想：既然无线设备A与无线设备B无法直接通信，而它们各自却可以直接与网关通信，有没有方法能让A与B之间通信所发送的包先走一遍网关再走到终点呢？
 
 答案是：**有**。

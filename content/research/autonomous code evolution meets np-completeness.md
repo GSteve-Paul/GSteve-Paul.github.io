@@ -31,7 +31,7 @@ tags:
 - 击败了SAT Competition 2025中所有人类设计的求解器
 ## SATLUTION 框架
 
-![[Pasted image 20251002194725.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251002194725.png)
 
 该框架本质上是一个冠军/挑战者模型，经过“代码生成->编译->测试->分析和推理->进化”这一流程的不断迭代，成功的挑战者会取代原有的冠军，进而可以不断地提升代码质量。
 
@@ -44,7 +44,7 @@ tags:
 
 框架基于Cursor实现，采用Claude模型优化求解器。其生成的代码仓库的固定结构如下：
 
-![[Pasted image 20251003132426.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003132426.png)
 
 ### 初始化
 
@@ -58,7 +58,7 @@ tags:
 
 向规则库写入静态规则。包含项目目标、SAT相关的领域知识、代码仓库的结构和SATLUTION框架的基本工作流等静态规则。同时也会把一些动态规则的初始规则设定好，比如禁止的编码模式规则的初始禁止内容。
 
-![[Pasted image 20251003135003.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003135003.png)
 
 ### 规划和编码agent
 
@@ -72,7 +72,7 @@ tags:
 
 在编码agent顺利生成一版仓库代码后，考虑到可能会有很多bug，框架不会直接让这一版代码去跑benchmark，而是编译通过后用少量的计算资源用于测试。如果直接去跑benchmark，因为求解器可能是错的，那么一方面可能会浪费很多时间，另一方面也有可能因为这种错误的迭代污染了打分，破坏了整个进化流程。
 
-![[Pasted image 20251003150923.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003150923.png)
 
 #### 流程
 
@@ -100,7 +100,7 @@ tags:
 
 评估模块会让上面通过了验证的求解器去跑2024年SAT比赛的400个例子，收集如下指标：
 
-![[Pasted image 20251003161440.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003161440.png)
 
 其中VBS全称为虚拟最佳求解器，它汇总了选择的种子求解器的求解结果。评估反馈的打分主要是和PAR-2分数有关。评估出来的这些信息会被写入仓库代码的RESULTS.md中。
 
@@ -133,7 +133,7 @@ tags:
 
 缺乏静态规则，可能会导致更多的结果验证错误、负优化、不可复现的优化等等问题。
 
-![[Pasted image 20251003135003.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003135003.png)
 
 动态自进化规则是在验证机制结束后，会有分析器把各种错误日志转化为规则补丁，并用这些补丁更新规则，确保Cursor能用最新的规则指导代码的进化。
 
@@ -141,7 +141,7 @@ tags:
 
 ## SATLUTION 学习到的策略
 
-![[Pasted image 20251003213413.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020251003213413.png)
 
 ## 改进点
 

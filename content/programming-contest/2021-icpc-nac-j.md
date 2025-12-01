@@ -16,7 +16,7 @@ tags:
 
 考虑到只要一个回文字符串左边出现了ab,则右边就必然出现ba,那么我们可以只研究这个字符串的一半:
 
-![IMG_20230507_185021.jpg](../data/programming-contest/2021-icpc-north-america-championship-J/8d5809fec8f7404baeab04d2c7557bba.image)
+![](https://file.stevepaul.cc/8d5809fec8f7404baeab04d2c7557bba.png)
 
 因此可以得到状态转移方程:
 ```c++
@@ -51,7 +51,7 @@ $min_{j=0->25}(dp[i_{last}][j])$
 $dp[i][j] = min_{k=0->25}(dp[i-1][k]+cost[k][j]+cost[j][k]+cost[j][j])$
 
 **3.**
-对于k==2,需要特判一下,也就是只能像aa,bb,cc这样的填进去.
+对于k=2,需要特判一下,也就是只能像aa,bb,cc这样的填进去.
 
 最后得出答案的时候,如果最小值是maxcost,那么得输出-1才行.
 

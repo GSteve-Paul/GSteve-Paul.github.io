@@ -25,7 +25,7 @@ $a[n+2]<=a[n+1]+a[n]$ 且 $a[n+2]>a[n+1]>a[n]$
 int dp[maxk][maxn][maxn]{};//dp[t][j][k] 第t个题目,选择题目为i,上一个是j的方案数量
 ```
 
-$dp[t][i][j]=sum(dp[t-1][j][k]),k<j<i $且$ d[i]≤d[j]+d[k]$
+$$dp[t][i][j]=sum(dp[t-1][j][k]),k<j<i $且$ d[i]≤d[j]+d[k]$$
 
 最终答案就是$sum(dp[k][i][j])$
 

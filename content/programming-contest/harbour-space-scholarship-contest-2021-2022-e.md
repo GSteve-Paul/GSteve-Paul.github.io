@@ -4,7 +4,7 @@ date: 2024-04-14
 tags:
   - 算法题解
 ---
-原题链接：https://codeforces.com/problemset/problem/1553/E
+原题链接： https://codeforces.com/problemset/problem/1553/E
 
 好题，一个思维层次比较高的题目。
 

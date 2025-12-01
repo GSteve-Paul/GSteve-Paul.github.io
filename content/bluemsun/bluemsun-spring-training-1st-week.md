@@ -9,20 +9,20 @@ tags:
 ## IDEA的基本使用
 ### 创建项目
 
-![屏幕截图 2023-03-21 181313.png](../data/bluemsun/bluemsun-spring-training-1st-week/25775f599aa14ca880f3d0b8b65cd888.image)
+![](https://file.stevepaul.cc/25775f599aa14ca880f3d0b8b65cd888.png)
 安装好JDK,设置好环境变量开始创建项目.
 语言选择Java.构建系统指的是一个把源代码生成可执行应用程序的过程自动化的程序.
 
 ### 新建模块
 
 #### 主界面
-![屏幕截图 2023-03-21 183005.png](../data/bluemsun/bluemsun-spring-training-1st-week/239424fbe3474c7eb2b4058221f54699.image)
+![](https://file.stevepaul.cc/239424fbe3474c7eb2b4058221f54699.png)
 左边的项目栏中bluemsun week1节点表示Java模块,其下有多个文件/文件夹.
 - src文件夹是用来存放java源代码.
 - .iml文件是idea用来存储一些模块开发有关的信息.
 - .idea文件夹下存放了项目的配置信息.
 #### 新模块
-![屏幕截图 2023-03-21 205327.png](../data/bluemsun/bluemsun-spring-training-1st-week/a7e67b5586014d7da0069ae43ea728fc.image)
+![](https://file.stevepaul.cc/a7e67b5586014d7da0069ae43ea728fc.png)
 > idea中Project是最顶级的结构单元,然后就是Module.一个Project里面可以有多个Module. Project主要起到项目定义,范围约束和规范的作用.
 - 对于一个单Module项目,它就是Project.
 - 对于一个多Module项目,这些Module彼此可能存在一定关系.
@@ -31,17 +31,17 @@ tags:
 而每个新建的Module下都有与之对应的.iml文件和src文件夹.
 ### 新建包和类
 
-![屏幕截图 2023-03-21 185937.png](../data/bluemsun/bluemsun-spring-training-1st-week/769626a6a6a749cd9a9d7c92da0f7394.image)
+![](https://file.stevepaul.cc/769626a6a6a749cd9a9d7c92da0f7394.png)
 在左侧项目视图src节点上右击新建软件包,在软件包上接着右击新建java类,得到如图所示在pack1下的Main类.
 
 ### 编写代码
 
-![屏幕截图 2023-03-21 191320.png](../data/bluemsun/bluemsun-spring-training-1st-week/3763ee2ab8be424292db2daaccf3f3f4.image)
+![](https://file.stevepaul.cc/3763ee2ab8be424292db2daaccf3f3f4.png)
 在右侧的编辑器内输入代码,可以在上方的代码菜单栏中选择自动格式化代码对代码进行美化.
 
 ### 调试运行
 
-![屏幕截图 2023-03-21 191932.png](../data/bluemsun/bluemsun-spring-training-1st-week/59c54ea00df84632a458ebc5aab2f2e0.image)
+![](https://file.stevepaul.cc/59c54ea00df84632a458ebc5aab2f2e0.png)
 - 调试:单击菜单运行中调试'Main'可以开始编译后开始调试.在下面的调试菜单中给出了如Visual Studio中的调试方法,可以在栏目中看到函数栈和监视窗口.
 
 - 运行:也可以只在运行菜单中单击运行'Main'以运行程序.
@@ -51,7 +51,7 @@ tags:
 ### 其他
 #### 删除缓存
 
-![屏幕截图 2023-03-23 082706.png](../data/bluemsun/bluemsun-spring-training-1st-week/9daff48b69814539af0903dc1ce0fd47.image)
+![](https://file.stevepaul.cc/9daff48b69814539af0903dc1ce0fd47.png)
 有些时候由于缓存和索引的损坏,idea可能无法打开项目或者自定义界面混乱,这个时候可以在文件菜单中点击清除缓存,这样在下一次打开项目时idea可以自己重新建立索引.
 
 > 而idea建立缓存索引的目的是加快文件查询的速度,进而提高各种查找、代码提示等操作的速度.
@@ -59,9 +59,9 @@ tags:
 #### 导出jar包
 
 1. 在项目->打开模块设置->工件->添加->jar->来自具有依赖项的模块,然后选择想打包的模块和主类确定后就建立好了工件.
-![image.png](../data/bluemsun/bluemsun-spring-training-1st-week/e82e9902884546aba8f2aca6021408f1.image)
+![](https://file.stevepaul.cc/e82e9902884546aba8f2aca6021408f1.png)
 
-2. 在构建->构建工件后选择刚才建立的工件,然后就可以在/out/aitifacts文件夹下找到.jar文件.![image.png](../data/bluemsun/bluemsun-spring-training-1st-week/c583caf3a9f6443fa54a32f12d4a8dc1.image)
+2. 在构建->构建工件后选择刚才建立的工件,然后就可以在/out/aitifacts文件夹下找到.jar文件.![](https://file.stevepaul.cc/c583caf3a9f6443fa54a32f12d4a8dc1.png)
 
 3. 在jar所在文件夹中打开cmd,输入
 ``
@@ -72,10 +72,10 @@ java -jar *.jar
 #### 导入jar包
 
 1. 在项目->打开模块设置->模块->依赖->添加->JAR或目录->选择某个.jar文件并确定添加.
-![image.png](../data/bluemsun/bluemsun-spring-training-1st-week/4345aaf80510461e8429d11f778ded56.image)
+![](https://file.stevepaul.cc/4345aaf80510461e8429d11f778ded56.png)
 
 2. 此时在外部库中就可以看到导入的jar文件,在使用其中的类时记得import.
-![image.png](../data/bluemsun/bluemsun-spring-training-1st-week/45006bdf093e416ea18276fb8b6cf00e.image)
+![](https://file.stevepaul.cc/45006bdf093e416ea18276fb8b6cf00e.png)
 
 ## Java三大特性
 
@@ -193,4 +193,4 @@ public interface Write
 
 最后放个测试图片完结撒花
 
-![image.png](../data/bluemsun/bluemsun-spring-training-1st-week/0b992dc581994d508fdaac4c5ec5cf39.image)
+![](https://file.stevepaul.cc/0b992dc581994d508fdaac4c5ec5cf39.png)

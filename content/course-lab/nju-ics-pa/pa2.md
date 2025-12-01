@@ -34,7 +34,7 @@ while (1)
 
 这里我看的是《RISC-V开放架构设计之道》，它是中文的，我们很容易能知道这些RISC-V指令的编码
 
-![[Pasted image 20250720162729.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250720162729.png)
 同时，具体每个指令的具体行为在附录-A里也有说明。
 
 #### 立即数背后的故事
@@ -139,8 +139,8 @@ static int decode_exec(Decode *s)
 
 需要注意的是`srai`指令是一个坑，对于一般的I型指令，其立即数和`srai`的shamt的域并不相同，shamt相对于立即数少了${2^{10}}$。
 
-![[Pasted image 20250720233624.png]]
-![[Pasted image 20250720233518.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250720233624.png)
+![](https://file.stevepaul.cc/Pasted%20image%2020250720233518.png)
 因此需要实现为：
 ```c title="$NEMU_HOME/src/isa/riscv32/inst.c"
 INSTPAT("010000? ????? ????? 101 ????? 00100 11", srai, I, R(rd) = ((sword_t)src1 >> (imm - (1 << 10))));
@@ -1756,19 +1756,19 @@ void free(void *ptr)
 
 截取一个[高尔顿钉板](https://en.wikipedia.org/wiki/Galton_board)的运行图示：
 
-![[Screenshot from 2025-08-05 20-29-58.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-05%2020-29-58.png)
 
 #### 观看"Bad Apple!!" PV
 
 豪堪！
 
-![[Screenshot from 2025-08-05 20-33-00.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-05%2020-33-00.png)
 
 #### 运行红白机模拟器
 
 豪玩！
 
-![[Screenshot from 2025-08-05 20-46-46.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-05%2020-46-46.png)
 
 #### native和klib
 
@@ -1906,19 +1906,19 @@ void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl)
 
 效果如图：
 
-![[Screenshot from 2025-08-06 15-21-43.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-06%2015-21-43.png)
 
 #### 运行演示程序(2)
 
 豪堪。
 
-![[Screenshot from 2025-08-06 15-26-39.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-06%2015-26-39.png)
 
 #### 运行红白机模拟器(3)
 
 卡成几秒钟一帧，近乎不能玩😭。毕竟相当于是套了两层虚拟机，性能着实糟糕。
 
-![[Screenshot from 2025-08-06 15-38-15.png]]
+![](https://file.stevepaul.cc/Screenshot%20from%202025-08-06%2015-38-15.png)
 
 #### 实现声卡
 
@@ -2138,7 +2138,7 @@ void __am_audio_play(AM_AUDIO_PLAY_T *ctl)
 #### 展示你的计算机系统
 
 这是`slider`程序的截图
-![[Pasted image 20250806184125.png]]
+![](https://file.stevepaul.cc/Pasted%20image%2020250806184125.png)
 #### 游戏是如何运行的
 
 从静态视角而言，游戏会在这里访问键盘设备进而得到输入，并检测从代码逻辑上是否命中。这个`io_read`本质上是访问一个设备寄存器，进而调用我之前实现的键盘设备驱动，进而访问特定的内存地址。然后这会被编译成一个读内存的指令。在NEMU上运行时遇到这个指令将会进行一个访存，然后发现地址对应着的是键盘设备，于是调用了键盘设备的回调函数，得到了具体的键盘事件。

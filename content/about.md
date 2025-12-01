@@ -28,17 +28,17 @@ title: 关于我
 
 ## 网名?
 
-![忘却的旋律](mclauncher1.png)
+![](https://file.stevepaul.cc/mclauncher1.png)
 
 我的网名并不是随便滚键盘滚出来的，而是由两个没啥关系的东西有机结合在一块的。
 
 一方面，Steve来源于游戏Minecraft中的主人公Steve（当时我还在玩Minecraft 1.6.4， Alex还没出现）
 
-![忘却的旋律](mclauncher2.png)
+![](https://file.stevepaul.cc/mclauncher2.png)
 
 另一方面，Paul是我小学时一个名叫Owen的爱尔兰人给我起的。
 
-![忘却的旋律](mclauncher3.png)
+![](https://file.stevepaul.cc/mclauncher3.png)
 
 反正无论怎么讲，我的第二个网名就这样创造出来了，于是也就再也没改过了。
 
