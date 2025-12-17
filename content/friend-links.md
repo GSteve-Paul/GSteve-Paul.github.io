@@ -8,6 +8,7 @@ title: 友情链接
 | 无双     | https://blog.wushuang233.com/ |
 | dodola | https://dodolalorc.cn/        |
 | ling_1 | https://ling101w.github.io/   |
+| 0.     | https://virgiling.wiki/       |
 
 ---
 
