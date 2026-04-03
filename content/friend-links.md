@@ -9,6 +9,8 @@ title: 友情链接
 | dodola | https://dodolalorc.cn/        |
 | ling_1 | https://ling101w.github.io/   |
 | 0.     | https://virgiling.wiki/       |
+| 枫禾     | https://blog.bigsmartie.cn    |
+| LxRey  | https://blog.llrong.xyz       |
 
 ---
 
