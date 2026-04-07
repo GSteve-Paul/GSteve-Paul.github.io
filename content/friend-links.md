@@ -11,6 +11,7 @@ title: 友情链接
 | 0.     | https://virgiling.wiki/       |
 | 枫禾     | https://blog.bigsmartie.cn    |
 | LxRey  | https://blog.llrong.xyz       |
+| 梦晓太    | https://agazigi.github.io/    |
 
 ---
 
