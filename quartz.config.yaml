@@ -7,7 +7,7 @@ configuration:
   analytics:
     provider: plausible
   locale: zh-CN
-  baseUrl: blog.stevepaul101.net
+  baseUrl: blog.stevepaul.cc
   ignorePatterns:
     - private
     - templates
