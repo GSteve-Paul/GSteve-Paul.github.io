@@ -74,7 +74,7 @@ tags:
 首先了解Mybatis的基本逻辑架构：
 
 
-![](https://file.stevepaul.cc/a37a55fb6990495b9f9a345864706a16.png)
+![](https://file.stevepaul101.net/a37a55fb6990495b9f9a345864706a16.png)
 
 可通过`SqlSessionFactoryBuilder`读取配置信息的某一个`environment`之后获取一个`SqlSessionFactory`，这个`SqlSessionFactory`就恰好对应这样的一个`environment`了，接着可以由此获取很多的`SqlSession`，每个会话就相当于我在不同的地方登陆一个账号去访问数据库，你也可以认为这就是之前JDBC中的`Statement`对象，会话之间相互隔离，没有任何关联。
 

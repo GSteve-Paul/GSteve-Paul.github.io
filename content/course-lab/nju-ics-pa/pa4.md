@@ -290,7 +290,7 @@ static Context *ev_handler(Event e, Context *c)
 
 ...
 
-void rt_hw_context_switch_to(rt_ubase_t ![](https://file.stevepaul.cc/Pasted%20image%2020250825012651.png)to)
+void rt_hw_context_switch_to(rt_ubase_t ![](https://file.stevepaul101.net/Pasted%20image%2020250825012651.png)to)
 {
     // switch_from = NULL;
     // switch_to = (Context **)to;
@@ -740,13 +740,13 @@ int _execve(const char *fname, char *const argv[], char *const envp[])
 
 RV32的分页方案叫作Sv32，支持4GiB的虚拟地址空间，每一个基页为4KiB。
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250822211012.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250822211012.png)
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250822211120.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250822211120.png)
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250822211226.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250822211226.png)
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250822211307.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250822211307.png)
 #### 空指针真的是"空"的吗?
 
 解引用的时候就是访0地址的存，这个0地址会被当作虚拟地址，于是会发现它在页表中没有映射，所以才导致的程序崩溃。
@@ -1490,7 +1490,7 @@ Context *schedule(Context *prev)
 
 下面是成果演示，确实很酷呢：
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-24_22.56.58.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-08-24_22.56.58.mp4"></video></p>
 
 #### 编译ONScripter到Linux native
 
@@ -1818,7 +1818,7 @@ int IMG_isPNG(SDL_RWops *src)
 ```
 这样，现在就可以在Navy native上运行ONScripter了：
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250827194955.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250827194955.png)
 #### 在ONScripter中播放BGM
 
 显然，你要去实现上面的那些API，并且还要实现`Mix_OpenAudio`和`Mix_CloseAudio`两个函数。说实话SDL的文档并不是那么易懂，还是来简要地梳理一下吧：首先`Mix_OpenAudio`和`Mix_CloseAudio`是用来调用`SDL_OpenAudio`和`SDL_CloseAudio`的，所以它们是用来注册音频的回调函数的，这非常重要，不然就播不出来声音。而`Mix_PlayMusic`是为回调函数里的声音提供声音来源信息的，而这个信息是从`Mix_LoadMUS_RW`所打开的音频文件所得来的。因此回调函数里面就是根据`Mix_PlayMusic`的声音来源信息解码音频，进而把声音信息塞进`stream`中的。具体实现如下：
@@ -1953,7 +1953,7 @@ static void callback(void *userdata, uint8_t *stream, int len)
 
 演示如下，这BGM还挺好听的：
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-27_23.12.24.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-08-27_23.12.24.mp4"></video></p>
 
 #### 在ONScripter中播放音效
 
@@ -2239,7 +2239,7 @@ int Mix_PlayingMusic()
 
 下面是个简单的演示：
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-28_12.12.10.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-08-28_12.12.10.mp4"></video></p>
 
 #### 在ONScripter中播放音效(2)
 
@@ -2402,7 +2402,7 @@ void init_disk()
 
 为了玩上“星之梦”，还需要把“星之梦”的游戏数据放到磁盘上，这很简单，在`$NAVY_HOME/fsimg/share/games`下创建一个软链接就可以了。如果你实现正确，现在应该就可以在AM native上的Nanos-lite里启动ONScripter，进而玩上“星之梦”了。
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-29_01.10.35.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-08-29_01.10.35.mp4"></video></p>
 
 #### 实现NEMU的磁盘
 
@@ -2608,7 +2608,7 @@ void __am_disk_blkio(AM_DISK_BLKIO_T *io)
 
 下面是一段演示，很卡，但是能运行是真的：
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-08-29_22.02.54.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-08-29_22.02.54.mp4"></video></p>
 
 #### DMA和CPU cache
 
@@ -2682,4 +2682,4 @@ Program received signal SIGSEGV, Segmentation fault.
 
 这个错误6很有意思，因为根据英特尔的手册，P位在这里不应该是0啊，但是我也无法理解了。
 
-![](https://file.stevepaul.cc/Pasted%20image%2020250825012607.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020250825012607.png)

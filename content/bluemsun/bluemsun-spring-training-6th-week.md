@@ -26,7 +26,7 @@ tags:
 
 JDBC结构图:
 
-![](https://file.stevepaul.cc/c241ae7eba8e47549100bf050ff03145.png)
+![](https://file.stevepaul101.net/c241ae7eba8e47549100bf050ff03145.png)
 
 ## 加载驱动
 
@@ -60,7 +60,7 @@ try {
 
 #### 创建资源文件
 
-![](https://file.stevepaul.cc/8ba8a7646943470db9f109d573c1d1be.png)
+![](https://file.stevepaul101.net/8ba8a7646943470db9f109d573c1d1be.png)
 
 在main文件夹下与java文件夹同级的地方建立一个资源文件夹,里面新建资源文件db.properties,然后键入需要的各个属性.
 

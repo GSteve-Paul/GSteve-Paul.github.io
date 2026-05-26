@@ -33,7 +33,7 @@ $$
 
 要求一个连通块的顶点数,本质上是求以某个顶点为树根的子树的大小.这个事情可以用递归来做.以下贴一个代码段:
 
-![](https://file.stevepaul.cc/a197d1aeccda4c2b8759ec8cc0ebdedd.png)
+![](https://file.stevepaul101.net/a197d1aeccda4c2b8759ec8cc0ebdedd.png)
 
 ```c++
 const ll maxn=2e5+5;

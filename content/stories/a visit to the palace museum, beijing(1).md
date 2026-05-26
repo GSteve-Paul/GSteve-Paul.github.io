@@ -18,89 +18,89 @@ date: 2025-11-11
 
 ## 主路线
 
-![](https://file.stevepaul.cc/IMG_20251102_102349.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_102349.jpg)
 
 说实话故宫确实是人山人海，除了讲普通话的，好像也听到一些讲着粤语之类的南方方言的人。此外还看见有不少俄罗斯人前来，可能是之前免签政策发力了？
 
-![](https://file.stevepaul.cc/IMG_20251102_103001.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_103001.jpg)
 
 之后走到一个宫殿前，看到一个石狮子旁边有一群人围着一个讲解员。凑近一听，原来是在讲这个石狮子：宫殿前面一般摆放的两个石狮子是皇权的象征，普通人走在它跟前就会被它的这种气势所压倒，因而就表明皇权的至高无上。因此这个讲解员就建议大家不要正对着这玩意儿拍照，而是侧着拍。但是我就不信这邪，所以故意来专门拍一个。
 
-![](https://file.stevepaul.cc/IMG_20251102_103121.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_103121.jpg)
 
 此外还有一些动物，比如这个乌龟。我个人觉得长得挺丑的。
 
-![](https://file.stevepaul.cc/IMG_20251102_103927.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_103927.jpg)
 
 下面这个宫殿是保和殿，在清朝乾隆之后是组织殿试的地方。
 
-![](https://file.stevepaul.cc/IMG_20251102_104319.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_104319.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_104416.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_104416.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_105106.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_105106.jpg)
 
 ## 珍宝馆
 
 随后我就去了珍宝馆。宏伟的大型宫殿两边是一些比较小型的建筑，互相用红墙隔开，显得十分神秘。
 
-![](https://file.stevepaul.cc/IMG_20251102_110050.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_110050.jpg)
 
 珍宝馆中有一幅好几只龙的壁画，正好这里画着两只龙在哈气。
 
-![](https://file.stevepaul.cc/IMG_20251102_111013.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_111013.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_111004.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_111004.jpg)
 
 珍宝馆是个比较大的馆，或者说它就不是馆——应该是博物院的人把好几个宫殿和房间划出来称为一个馆。里边陈列了一些奇珍异宝，通往外界的门大多也被关闭，留下一个门开着用来收门票用的。因此在一个馆内发现了皇极殿，而且还是为数不多人数不是很多的宫殿：
 
-![](https://file.stevepaul.cc/IMG_20251102_111304.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_111304.jpg)
 
 异体字看着还挺有意思，有一种新鲜感：
 
-![](https://file.stevepaul.cc/IMG_20251102_111425.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_111425.jpg)
 
 接下来看的就是一些奇珍异宝了：
 
-![](https://file.stevepaul.cc/IMG_20251102_111737.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_111737.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_112407.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_112407.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_112503.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_112503.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_112536.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_112536.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_112612.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_112612.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_112741.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_112741.jpg)
 
 演戏的地方：
 
-![](https://file.stevepaul.cc/IMG_20251102_113809.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_113809.jpg)
 
 随后来到勤政殿，话说这些比较小的宫殿还是准进去看的：
 
-![](https://file.stevepaul.cc/IMG_20251102_114231.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_114231.jpg)
 
 ## 钟表馆
 
 看完了珍宝馆，接下来看钟表馆。顾名思义，就是陈列各国钟表的地方：
 
-![](https://file.stevepaul.cc/IMG_20251102_120428.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_120428.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_120511.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_120511.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_120647.jpg)
-![](https://file.stevepaul.cc/IMG_20251102_120851.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_120647.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_120851.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_121056.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_121056.jpg)
 
 看完钟表馆已经是中午了，有点饿，也有点累。所以就前往了武英殿看看陶瓷馆。这个武英殿还挺有说法，当年闯王李自成都还来过，不过也只是来过罢了。
 
-![](https://file.stevepaul.cc/IMG_20251102_124759.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_124759.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251102_124519.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_124519.jpg)
 
 逛了好几个小时看到了好多新玩意儿，但也差不多累了。看了一眼故宫里的食堂一个盖饭就要六七十块钱，这也太贵了！于是我从最先找到的东华门离开故宫，到外边去吃了碗牛肉炒拉面饱腹，便回宿舍躺下了。
 
-![](https://file.stevepaul.cc/IMG_20251102_122211.jpg)
+![](https://file.stevepaul101.net/IMG_20251102_122211.jpg)

@@ -16,10 +16,6 @@ export default ((opts?: Options) => {
       <footer class={`${displayClass ?? ""}`}>
         {/* <script type="text/javascript" id="clustrmaps" src="//clustrmaps.com/map_v2.js?d=1UBnJzfBqND8LMv6DAkx3at6WX_TFZn5F5Ksu9V3IAw&cl=ffffff&w=a"></script> */}
         <p>
-          <a href="https://beian.miit.gov.cn/" target="_blank">渝ICP备2025068702号-1</a>&nbsp;&nbsp;&nbsp;
-          <img src={beianImageDefaultPath} alt="备案图标" height={20} style={{ margin: "0" }}></img><a href="https://beian.mps.gov.cn/#/query/webSearch?code=50010102001421" rel="noreferrer" target="_blank">渝公网安备50010102001421号</a>
-        </p>
-        <p>
           {i18n(cfg.locale).components.footer.createdWith}{" "}
           <a href="https://quartz.jzhao.xyz/">Quartz v{version}</a> © {year}
         </p>

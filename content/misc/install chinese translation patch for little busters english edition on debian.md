@@ -17,4 +17,4 @@ date: 2026-01-27
 问题主要出在补丁程序在运行时需要从一个打开文件对话框中选中 Little Busters English Edition 的可执行文件。一般来说，在 Debian 里这个路径应该是
 `$HOME/.steam/debian-installation/steamapps/common/Little Busters! English Edition/LITBUS_WIN32.exe`。但鉴于这个对话框里似乎无法显示隐藏文件，所以可以用 `ln -s $HOME/.steam/debian-installation/steamapps/common/Little\ Busters!\ English\ Edition/ lb` 做一个软链接，然后再通过软链接定位到具体的程序。
 
-![image.png](https://file.stevepaul.cc/20260127233712659.png)
+![image.png](https://file.stevepaul101.net/20260127233712659.png)

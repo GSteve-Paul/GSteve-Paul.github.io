@@ -34,18 +34,18 @@ date: 2025-11-01
 
 虽然在上述的操作后，可以在riscv32-NEMU上玩CLANNAD了，但是能在模拟器上玩也不太可能——实在是太卡了，光是Presented by Key这个动画都跑了几分钟才跑完。
 
-![](https://file.stevepaul.cc/Screenshot%20from%202025-11-01%2015-43-04.png)
+![](https://file.stevepaul101.net/Screenshot%20from%202025-11-01%2015-43-04.png)
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-11-01_15.40.00.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-11-01_15.40.00.mp4"></video></p>
 
-<p><video controls src="https://file.stevepaul.cc/simplescreenrecorder-2025-11-01_15.51.25.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/simplescreenrecorder-2025-11-01_15.51.25.mp4"></video></p>
 
 最近我安装了Fedora Linux 43 (KDE Plasma Desktop Edition) x86_64这个系统，于是打算把ICS-PA从Ubuntu 24.04移植到Fedora 43上，虽然只是发行版不同，但是出现的Bug却真的很多。由于我实在是找不到一个能在Fedora (KDE) + Wayland上正常运行还带录音的录屏软件，我就只好截个图了。
 
 正是因为这些Bug，我将长期保持我的电脑上有Windows 11，Ubuntu 24.04 和 Fedora 43的魔幻状态。如果实在是Bug太多，我将会装个Debian 13差不多得了。
 
-![](https://file.stevepaul.cc/Pasted%20image%2020251101235551.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020251101235551.png)
 
 之后安了个OBS专门来录屏，感觉有点大材小用了，但是这也是不得不之为。下面这段就是用OBS录制的风子线的Good End。
 
-<p><video controls src="https://file.stevepaul.cc/2025-11-02%2016-49-07.mp4"></video></p>
+<p><video controls src="https://file.stevepaul101.net/2025-11-02%2016-49-07.mp4"></video></p>

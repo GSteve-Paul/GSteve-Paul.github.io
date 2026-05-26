@@ -4,7 +4,7 @@ date: 2025-10-26
 ---
 最近来中科院软件所实习。既然在北京，周末当然要用来逛逛博物馆。第一周我生病😷了就没办法去，只好在第二周周日（2025 年 10 月 26 日）早上去看军博了。下周准备去看一下故宫博物院。
 
-![](https://file.stevepaul.cc/IMG_20251026_100015.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100015.jpg)
 
 这应该是我第一次去看这种规模的博物馆。我的家乡重庆万州有个三峡移民纪念馆，不过我从来没去过。
 
@@ -12,7 +12,7 @@ date: 2025-10-26
 
 军事博物馆外面有一些清朝时期的老炮。这门岸防炮曾经在战斗中受损，现在成为了那段岁月永久的纪念。
 
-![](https://file.stevepaul.cc/IMG_20251026_100157.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100157.jpg)
 
 军事博物馆内部分四层，每层都有展出不同的东西：
 
@@ -25,27 +25,27 @@ date: 2025-10-26
 
 ## 第一层
 
-![](https://file.stevepaul.cc/IMG_20251026_100308.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100308.jpg)
 
 第一层的主展厅有一堆战机：
 
 一些是凯申物流🚚的战机（P-51）。
 
-![](https://file.stevepaul.cc/IMG_20251026_100540.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100540.jpg)
 
 也有些是抗美援朝时候苏联给的飞机（米格-15）。
 
-![](https://file.stevepaul.cc/IMG_20251026_100655.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100655.jpg)
 
 剩下的基本上是之后我国自主研发的战机。
 
-![](https://file.stevepaul.cc/IMG_20251026_100939.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_100939.jpg)
 
 很高兴能看到这么真实的老飞机。不过我在 2023 年长春航展上看到过更活灵活现的，更先进的战机😂。
 
 好像是在一楼的副展厅（不清楚位置了，可能不在一楼）还看到这个。原来解放战争期间共产党这边也没完全弃用青天白日满地红旗帜。
 
-![](https://file.stevepaul.cc/IMG_20251026_120500.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_120500.jpg)
 
 ## 第二层
 
@@ -55,125 +55,125 @@ date: 2025-10-26
 
 81 杠：
 
-![](https://file.stevepaul.cc/IMG_20251026_104517.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_104517.jpg)
 
 博斯反坦克步枪（比想象中小）：
 
-![](https://file.stevepaul.cc/IMG_20251026_104529.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_104529.jpg)
 
 航弹：
 
-![](https://file.stevepaul.cc/IMG_20251026_105044.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_105044.jpg)
 
 蒋校长送的。不过最后还是让凯申物流送给共产党了🤣：
 
-![](https://file.stevepaul.cc/IMG_20251026_105205%201.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_105205%201.jpg)
 
 中间的那个是伪满洲国的剑：
 
-![](https://file.stevepaul.cc/IMG_20251026_130134.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_130134.jpg)
 
 一战老兵绍沙和伪装成一战老兵的 MG-13：
 
-![](https://file.stevepaul.cc/IMG_20251026_125805.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_125805.jpg)
 
 居然还有这么多德国货（MP-43 和 MP-44）：
 
-![](https://file.stevepaul.cc/IMG_20251026_131231.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_131231.jpg)
 
 费德罗夫和 SVT-40：
 
-![](https://file.stevepaul.cc/IMG_20251026_131159.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_131159.jpg)
 
 日本的伞兵步枪，我感觉可能挺稀有的吧：
 
-![](https://file.stevepaul.cc/IMG_20251026_131021.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_131021.jpg)
 
 伪装成其他东西的异形手枪：
 
-![](https://file.stevepaul.cc/IMG_20251026_130534.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_130534.jpg)
 
 这层的副展区还有一些有意思的东西：
 
 重庆号轻巡洋舰。它原本是英国的欧若拉号轻巡洋舰，在二战后英国送给了国民政府。解放战争期间该舰投诚给共产党了，但是最终开回解放区后被国民党战机轰炸，被迫自沉。
 
-![](https://file.stevepaul.cc/IMG_20251026_112150.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_112150.jpg)
 
 此事在《大决战-辽沈战役》中亦有记载：
 
-![](https://file.stevepaul.cc/Pasted%20image%2020251026232222.png)
+![](https://file.stevepaul101.net/Pasted%20image%2020251026232222.png)
 
-![](https://file.stevepaul.cc/IMG_20251026_112429.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_112429.jpg)
 
 ## 第三层
 
 第三层主要是艺术🎨这一块了，雕塑的冲击力还是很强的！
 
-![](https://file.stevepaul.cc/IMG_20251026_110605.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_110605.jpg)
 
-![](https://file.stevepaul.cc/IMG_20251026_111017.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_111017.jpg)
 
 ## 负一层
 
 镇馆之宝——珍宝岛耐憋王潜水冠军——苏制545 号 T-62 式坦克。太牌面了，上来就是它。
 
-![](https://file.stevepaul.cc/IMG_20251026_101431.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_101431.jpg)
 
 T-34-85 坦克，朝鲜战争时期的功臣坦克：
 
-![](https://file.stevepaul.cc/IMG_20251026_101637.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_101637.jpg)
 
 缴获越南的 T-34-85 坦克：
 
-![](https://file.stevepaul.cc/IMG_20251026_102304.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_102304.jpg)
 
 意大利 CV-33，地中海舵手 DUCE 的老年代步车：
 
-![](https://file.stevepaul.cc/IMG_20251026_102123.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_102123.jpg)
 
 功臣号，日制九七式中战车：
 
-![](https://file.stevepaul.cc/IMG_20251026_102348.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_102348.jpg)
 
 法制 M1897 75 mm 野战炮，即李云龙的意大利炮：
 
-![](https://file.stevepaul.cc/IMG_20251026_103008.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_103008.jpg)
 
 苏制 ZiS-2 反坦克炮，57 神针：
 
-![](https://file.stevepaul.cc/IMG_20251026_103137.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_103137.jpg)
 
 U-2 侦察机，但是是残骸：
 
-![](https://file.stevepaul.cc/IMG_20251026_123126.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_123126.jpg)
 
 U-2 侦察机的一生之敌——红旗 2 号地空导弹：
 
-![](https://file.stevepaul.cc/IMG_20251026_103051.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_103051.jpg)
 
 PaK-38 反坦克炮，也不知道是转了几手的货。可能是德国->英美盟国->国民党->共产党？ 
 
-![](https://file.stevepaul.cc/IMG_20251026_123321.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_123321.jpg)
 
 好像是晚清用于镇南关的要塞炮？
 
-![](https://file.stevepaul.cc/IMG_20251026_122229.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_122229.jpg)
 
 地狱之门里面爱用的 M-30 122 mm 榴弹炮：
 
-![](https://file.stevepaul.cc/IMG_20251026_124330.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_124330.jpg)
 
 国民党找德国订购的 150 mm 榴弹炮，有点像 sFH-18 榴弹炮，但是炮管是不是有点长了？
 
-![](https://file.stevepaul.cc/IMG_20251026_102536.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_102536.jpg)
 
 当然还有各种各样的 59 式坦克：
 
-![](https://file.stevepaul.cc/IMG_20251026_101926.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_101926.jpg)
 
 没看过就真无法体会到，原来 59 D 的 105 线膛炮的炮身这么长。
 
-![](https://file.stevepaul.cc/IMG_20251026_101949.jpg)
+![](https://file.stevepaul101.net/IMG_20251026_101949.jpg)
 
 ---
 

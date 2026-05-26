@@ -14,7 +14,7 @@ tags:
 
 ### 异常的分类
 
-![](https://file.stevepaul.cc/134f929eec764370a4aafbc688b9cdd9.png)
+![](https://file.stevepaul101.net/134f929eec764370a4aafbc688b9cdd9.png)
 
 1. `Throwable` 类是Java语言中所有错误或异常的顶层父类,其他异常类都继承于该类.`Throwable`类有两个重要的子类:`Exception` 和 `Error`.
 2. `Error` 类是程序无法处理的错误,表示运行应用程序中较严重问题。类似于JVM运行时错误,IO上的严重错误,类加载解析时的错误之类的无法挽回的错误.这些异常发生时,JVM一般会选择线程终止.如果需要抛出这种错误,不需要`try catch`或者 `throws`.
