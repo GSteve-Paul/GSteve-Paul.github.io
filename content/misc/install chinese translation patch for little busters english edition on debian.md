@@ -1,6 +1,8 @@
 ---
 title: 在Debian上为Little Busters English Edition安装中文补丁
 date: 2026-01-27
+tags:
+  - 游戏
 ---
 这里我采用的中文补丁是： https://github.com/Jack-Myth/LBEE_TranslationPatch ，非常感谢这位大佬的贡献。
 
