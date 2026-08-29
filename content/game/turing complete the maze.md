@@ -4,9 +4,9 @@ date: 2026-06-22
 tags:
   - 游戏
 ---
-Steam 上有一款游戏叫作 [Turing Complete](https://store.steampowered.com/app/1444480/Turing_Complete/)， 这款游戏会从基本的门电路开始手把手带你搭建一个计算机出来。我感觉这个游戏挺有意思的，所以我去年把它买了，稍微玩了一会儿，就只是做了几个很简单的门电路。最近突然又想要继续玩这个游戏，于是把游戏原存档重置之后又是开玩！大概过去一天时间，我已经搭建出来了一个很简单的计算机，并且在上面可以运行很简易的程序。
+Steam 上有一款游戏叫作 [Turing Complete](https://store.steampowered.com/app/1444480/Turing_Complete/)， 这款游戏会从基本的门电路开始手把手带你搭建一个计算机出来。我感觉这个游戏挺有意思的，所以我去年把它买了，稍微玩了一会儿，就只是做了几个很简单的门电路。最近突然又想要继续玩这个游戏，于是把游戏原存档重置之后又是开玩！大概过去一天时间，我已经搭建出来了一个很简单的计算机。
 
-在搭建出简易计算机后，这个游戏有一个关卡是让你写一段程序让机器人可以逃出迷宫。这个程序接受的输入是机器人所感知到的前方的方块信息，然后可以向机器人输出接下来的行动方式，进而控制机器人走向出口。
+在搭建出简易计算机后，这个游戏有一个关卡是让你写一段程序让机器人可以逃出迷宫。这个程序接受的输入是机器人所感知到的前方方块信息，然后可以向机器人输出接下来的行动方式，进而控制机器人走向出口。
 
 ![](https://file.stevepaul101.net/20260623003952_1.jpg)
 
@@ -137,4 +137,68 @@ j
 
 <p><video controls src="https://file.stevepaul101.net/turing_complete_maze_video.mp4"></video></p>
 
-另外，写这个代码给我的感觉还挺独特的。这种底层语言终究是没有类似于C这样的高级语言写起来顺手，但是在目前这个LLM辅助编程大行其道的时代，古法编程一次性写出来了这样的代码倒是很有成就感。
+另外，写这个代码给我的感觉还挺独特的。这种底层语言终究是没有类似于C这样的高级语言写起来顺手。但是在目前这个LLM辅助编程大行其道的时代，古法编程一次性成功地写出来这样的代码倒是很有成就感。
+
+---
+
+目前 Turing Complete 游戏迎来了一次大更新，其中大幅优化了汇编语句的编写方式，让代码更好写了。不过这也导致原先的代码变得不可用，以下是新版的代码，其算法逻辑与上面基本一致：
+
+```asm
+const LEFT=0
+const FORWARD=1
+const RIGHT=2
+
+const EMPTY=0
+const WALL=1
+ 
+loop:
+// back to original direction
+// try right
+imm RIGHT 
+mov out, r0
+imm return1
+mov r4, r0
+imm try_forward
+jmp
+
+return1: 
+// try original direction
+imm LEFT
+mov out, r0
+imm return2
+mov r4, r0
+imm try_forward
+jmp
+
+return2:
+// try left
+imm LEFT
+mov out, r0
+imm return3
+mov r4, r0
+imm try_forward
+jmp
+
+return3:
+// try left + left(backwards)
+imm LEFT
+mov out, r0
+imm try_forward
+jmp
+ 
+try_forward:
+mov r1, in
+imm EMPTY
+mov r2, r0
+sub
+imm forward
+jz
+mov r0, r4
+jmp
+ 
+forward:
+imm FORWARD
+mov out, r0
+imm loop
+jmp
+```
